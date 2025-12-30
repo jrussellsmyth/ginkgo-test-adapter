@@ -1,0 +1,114 @@
+[
+  {
+    "SuitePath": "/workspaces/ginkgo-test-adapter/ginkgo-example",
+    "SuiteDescription": "Example Suite",
+    "SuiteLabels": [],
+    "SuiteSemVerConstraints": [],
+    "SuiteSucceeded": true,
+    "SuiteHasProgrammaticFocus": false,
+    "SpecialSuiteFailureReasons": null,
+    "PreRunStats": {
+      "TotalSpecs": 2,
+      "SpecsThatWillRun": 2
+    },
+    "StartTime": "2025-12-30T19:40:21.132452055Z",
+    "EndTime": "2025-12-30T19:40:21.132655727Z",
+    "RunTime": 203673,
+    "SuiteConfig": {
+      "RandomSeed": 1767123620,
+      "RandomizeAllSpecs": false,
+      "FocusStrings": [
+        "Example Suite"
+      ],
+      "SkipStrings": null,
+      "FocusFiles": null,
+      "SkipFiles": null,
+      "LabelFilter": "",
+      "SemVerFilter": "",
+      "FailOnPending": false,
+      "FailOnEmpty": false,
+      "FailFast": false,
+      "FlakeAttempts": 0,
+      "MustPassRepeatedly": 0,
+      "DryRun": true,
+      "PollProgressAfter": 0,
+      "PollProgressInterval": 0,
+      "Timeout": 3599098573092,
+      "EmitSpecProgress": false,
+      "OutputInterceptorMode": "",
+      "SourceRoots": null,
+      "GracePeriod": 30000000000,
+      "ParallelProcess": 1,
+      "ParallelTotal": 1,
+      "ParallelHost": ""
+    },
+    "SpecReports": [
+      {
+        "ContainerHierarchyTexts": [
+          "GinkgoAdd"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+            "LineNumber": 10
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          []
+        ],
+        "ContainerHierarchySemVerConstraints": [
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+          "LineNumber": 11
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeSemVerConstraints": [],
+        "LeafNodeText": "adds two numbers",
+        "State": "passed",
+        "StartTime": "2025-12-30T19:40:21.132596797Z",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "GinkgoStandardLibraryBehavior"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+            "LineNumber": 16
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          []
+        ],
+        "ContainerHierarchySemVerConstraints": [
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+          "LineNumber": 17
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeSemVerConstraints": [],
+        "LeafNodeText": "calculates string length",
+        "State": "passed",
+        "StartTime": "2025-12-30T19:40:21.13263247Z",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      }
+    ]
+  }
+]

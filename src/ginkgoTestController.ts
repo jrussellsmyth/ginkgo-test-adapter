@@ -77,10 +77,11 @@ export class GinkgoTestController {
             for (const s of suites) {
                 const id = `${s.file}::${s.bootstrap}`;
                 const label = `${s.suite}`;
-                const item = this.controller.createTestItem(id, label, vscode.Uri.file(path.join(ws.uri.fsPath, s.file)));
+                const suiteFilePath = path.isAbsolute(s.file) ? s.file : path.join(ws.uri.fsPath, s.file);
+                const item = this.controller.createTestItem(id, label, vscode.Uri.file(suiteFilePath));
                 item.range = new vscode.Range(new vscode.Position(s.line - 1, s.column ? s.column - 1 : 0), new vscode.Position(s.line - 1, s.column ? s.column - 1 : 0));
                 this.controller.items.add(item);
-                this.itemMeta.set(item, { isSuite: true, workspaceFolder: ws, file: s.file, suite: s.suite, bootstrap: s.bootstrap, spec: undefined } as TestItemMeta);
+                this.itemMeta.set(item, { isSuite: true, workspaceFolder: ws, file: suiteFilePath, suite: s.suite, bootstrap: s.bootstrap, spec: undefined } as TestItemMeta);
 
                 // populate children by running a dry-run for this suite
                 this.populateSuiteChildren(item, ws);
@@ -97,8 +98,6 @@ export class GinkgoTestController {
         if (!meta) {
             return;
         }
-        const file = meta.file as string;
-        const suite = meta.suite as string;
         const bootstrap = meta.bootstrap as string;
         const cwd = ws.uri.fsPath;
         const outJson = path.join(cwd, `ginkgo_discovery_${bootstrap}.json`);

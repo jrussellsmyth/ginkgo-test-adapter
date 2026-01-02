@@ -23,7 +23,7 @@ type SuiteEntry struct {
 	// the name of the suite as given to RunSpecs
 	Suite string `json:"suite"`
 	// the name of the Test* function that bootstraps the suite
-	Bootstrap string `json:"bootstrap"`
+	Entrypoint string `json:"entrypoint"`
 }
 
 // This utility scans *_test.go files under -dir and finds Test* functions
@@ -93,7 +93,7 @@ func main() {
 						}
 						line := fset.Position(fn.Pos()).Line
 						col := fset.Position(fn.Pos()).Column
-						results = append(results, SuiteEntry{File: filepath.Base(path), Line: line, Column: col, Suite: suiteName, Bootstrap: name})
+						results = append(results, SuiteEntry{File: filepath.Base(path), Line: line, Column: col, Suite: suiteName, Entrypoint: name})
 						found = true
 						return false
 					}
@@ -109,7 +109,7 @@ func main() {
 						}
 						line := fset.Position(fn.Pos()).Line
 						col := fset.Position(fn.Pos()).Column
-						results = append(results, SuiteEntry{File: filepath.Base(path), Line: line, Column: col, Suite: suiteName, Bootstrap: name})
+						results = append(results, SuiteEntry{File: filepath.Base(path), Line: line, Column: col, Suite: suiteName, Entrypoint: name})
 						found = true
 						return false
 					}

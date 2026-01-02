@@ -8,6 +8,11 @@ import (
 )
 
 var _ = Describe("GinkgoAdd", func() {
+	When("adding two numbers", func() {
+		It("returns the correct sum", func() {
+			Expect(example.Add(1, 2)).To(Equal(3))
+		})
+	})
 	It("adds two numbers", func() {
 		Expect(example.Add(2, 3)).To(Equal(5))
 	})

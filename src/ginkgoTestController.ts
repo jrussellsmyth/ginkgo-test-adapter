@@ -3,23 +3,38 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
+// should match the struct returned by helpers/discover_suites.go
 type SuiteEntry = { 
     file: string; 
     line: number; 
     column?: number; 
     suite: string; 
-    bootstrap: string 
+    entrypoint: string 
 };
 
+type SuiteJson = {
+        SuitePath: string;
+        SuiteDescription: string;
+        SpecReports: SpecReport[];
+    };
+type SpecReport = {
+        ContainerHierarchyTexts?: string[]; 
+        ContainerHierarchyLocations?: any[];
+        LeafNodeText?: string;
+        LeafNodeLocation?: any;
+        State?: string;
+        Failure?: { Message: string };
+    };
 type TestItemMeta = {
     isSuite?: boolean;
     isContainer?: boolean;
+    focus?: string;
     workspaceFolder: vscode.WorkspaceFolder;
     file: string;
     line: number;
     column?: number;
     suite: string;
-    bootstrap: string;
+    entrypoint: string;
     spec?: any;
 };
 
@@ -73,18 +88,18 @@ export class GinkgoTestController {
         const workspaceFolders = vscode.workspace.workspaceFolders || [];
         for (const ws of workspaceFolders) {
             // ask go helper for suites in this workspace
-            const suites = await this.runGoHelper(this.context, ws.uri.fsPath);
-            for (const s of suites) {
-                const id = `${s.file}::${s.bootstrap}`;
-                const label = `${s.suite}`;
-                const suiteFilePath = path.isAbsolute(s.file) ? s.file : path.join(ws.uri.fsPath, s.file);
-                const item = this.controller.createTestItem(id, label, vscode.Uri.file(suiteFilePath));
-                item.range = new vscode.Range(new vscode.Position(s.line - 1, s.column ? s.column - 1 : 0), new vscode.Position(s.line - 1, s.column ? s.column - 1 : 0));
-                this.controller.items.add(item);
-                this.itemMeta.set(item, { isSuite: true, workspaceFolder: ws, file: suiteFilePath, suite: s.suite, bootstrap: s.bootstrap, spec: undefined } as TestItemMeta);
+            const suiteEntrypoints = await this.runGoHelper(this.context, ws.uri.fsPath);
+            for (const suiteEntrypoint of suiteEntrypoints) {
+                // const id = `${s.file}::${s.entrypoint}`;
+                // const label = `${s.suite}`;
+                // const suiteFilePath = path.isAbsolute(s.file) ? s.file : path.join(ws.uri.fsPath, s.file);
+                // const item = this.controller.createTestItem(id, label, vscode.Uri.file(suiteFilePath));
+                // item.range = new vscode.Range(new vscode.Position(s.line - 1, s.column ? s.column - 1 : 0), new vscode.Position(s.line - 1, s.column ? s.column - 1 : 0));
+                // this.controller.items.add(item);
+                // this.itemMeta.set(item, { isSuite: true, workspaceFolder: ws, file: suiteFilePath, suite: s.suite, entrypoint: s.entrypoint, spec: undefined } as TestItemMeta);
 
                 // populate children by running a dry-run for this suite
-                this.populateSuiteChildren(item, ws);
+                this.buildSuiteTree(ws, suiteEntrypoint);
             }
         }
     }
@@ -93,15 +108,13 @@ export class GinkgoTestController {
         // legacy per-file discovery is no longer used; we populate suites in discoverWorkspace
     }
 
-    async populateSuiteChildren(suiteItem: vscode.TestItem, ws: vscode.WorkspaceFolder) {
-        const meta = this.itemMeta.get(suiteItem);
-        if (!meta) {
-            return;
-        }
-        const bootstrap = meta.bootstrap as string;
+    // run ginkgo dry-run from the entrypoint to build the suite tree
+    async buildSuiteTree(ws: vscode.WorkspaceFolder, suiteEntrypoint: SuiteEntry) {
+        
+       
         const cwd = ws.uri.fsPath;
-        const outJson = path.join(cwd, `ginkgo_discovery_${bootstrap}.json`);
-        const args = ['run', '--dry-run', `--json-report=${outJson}`, '--', `-test.run=^${bootstrap}$`];
+        const outJson = path.join(cwd, `ginkgo_discovery_${suiteEntrypoint.entrypoint}.json`);
+        const args = ['run', '--dry-run', `--json-report=${outJson}`, '--', `-test.run=^${suiteEntrypoint.entrypoint}$`];
         try {
             await this.execProcess('ginkgo', args, { cwd });
         } catch (e) {
@@ -110,34 +123,47 @@ export class GinkgoTestController {
         if (fs.existsSync(outJson)) {
             const raw = fs.readFileSync(outJson, 'utf8');
             try {
-                const parsed = JSON.parse(raw);
-                this.buildTestTreeFromReport(suiteItem, parsed, ws);
+                const reports = JSON.parse(raw) as SuiteJson[];
+                for (const report of reports) // should be only one
+                {
+                    this.buildSuite(ws, report, suiteEntrypoint);
+                }
             } catch (e) {}
             try { fs.unlinkSync(outJson); } catch {}
         }
     }
 
+    
     // best-effort parser: look for spec reports and their container hierarchies
-    buildTestTreeFromReport(parentTestItem: vscode.TestItem, report: any, ws: vscode.WorkspaceFolder) {
-        // clear existing children
-        parentTestItem.children.forEach((c) => parentTestItem.children.delete(c.id));
+    buildSuite(  ws: vscode.WorkspaceFolder, report: SuiteJson, entrypoint: SuiteEntry) {
 
-        const parentMeta = this.itemMeta.get(parentTestItem);
-
-        const specs = this.findSpecReports(report);
+        //create top-level suite item
+        const suiteId = `${report.SuitePath}::${report.SuiteDescription}`;
+        const suiteLabel = report.SuiteDescription || entrypoint.suite || 'unnamed';
+        const suiteFilePath = path.isAbsolute(report.SuitePath) ? report.SuitePath : path.join(ws.uri.fsPath, report.SuitePath);
+        let suiteTestItem = this.controller.items.get(suiteId);
+        if (!suiteTestItem) {
+            suiteTestItem = this.controller.createTestItem(suiteId, suiteLabel, vscode.Uri.file(suiteFilePath));
+            this.controller.items.add(suiteTestItem);
+            this.itemMeta.set(suiteTestItem, { isSuite: true, focus: report.SuiteDescription, workspaceFolder: ws, file: suiteFilePath, suite: suiteLabel, entrypoint: '', spec: undefined } as TestItemMeta);
+        }
+        // clear existing children - if reloading, we will rebuild
+        suiteTestItem.children.forEach((c) => suiteTestItem.children.delete(c.id));
+        
+        // we need to Keep track of created container nodes to avoid duplicates
         const rootMap = new Map<string, vscode.TestItem>();
 
-        for (const spec of specs) {
+        for (const spec of report.SpecReports) {
             const containerHierarchy: string[] = spec.ContainerHierarchyTexts|| [];
             const locations: any[] = spec.ContainerHierarchyLocations || [];
             const leaf = spec.LeafNodeText  || 'unnamed';
             // create container chain
-            let parent = parentTestItem;
+            let parent = suiteTestItem;
             // iterate containers by index so we can retrieve location
             for (let i = 0; i < containerHierarchy.length; i++) {
                 const name = containerHierarchy[i];
                 const location = locations[i] || {};
-                const file = location.FileName || parentMeta?.file;
+                const file = location.FileName || suiteFilePath;
                 const line = location.LineNumber || 1;
 
                 const key = parent.id + '>' + name;
@@ -145,7 +171,7 @@ export class GinkgoTestController {
                 if (!node) {
                     node = this.controller.createTestItem(key, name, vscode.Uri.file( file ));
                     node.range = new vscode.Range(new vscode.Position((line as number) - 1, 0), new vscode.Position((line as number) - 1, 0));
-                    this.itemMeta.set(node, { isContainer: true, workspaceFolder: ws, file: file, suite: parentMeta?.suite, bootstrap: parentMeta?.bootstrap, spec: undefined } as TestItemMeta);
+                    this.itemMeta.set(node, { isContainer: true, workspaceFolder: ws, focus: name, file: file, suite: suiteLabel, entrypoint: entrypoint?.entrypoint, spec: undefined } as TestItemMeta);
                     parent.children.add(node);
                     rootMap.set(key, node);
                 }
@@ -155,7 +181,7 @@ export class GinkgoTestController {
             // create the leaf spec
             const specId = parent.id + '::' + leaf;
             const specLocation = spec.LeafNodeLocation || {};
-            const specFile = specLocation.FileName || parentMeta?.file;
+            const specFile = specLocation.FileName || entrypoint?.file;
             const specLine = specLocation.LineNumber || 1;
             const testItem = this.controller.createTestItem(specId, leaf, vscode.Uri.file( specFile));
             
@@ -163,7 +189,7 @@ export class GinkgoTestController {
             
             parent.children.add(testItem);
             this.itemMeta.set(testItem, { workspaceFolder: ws, file: specFile
-                , suite: parentMeta?.suite, bootstrap: parentMeta?.bootstrap, spec: spec } as TestItemMeta);
+                , suite: entrypoint?.suite, entrypoint: entrypoint?.entrypoint, spec: spec } as TestItemMeta);
         }
     }
 
@@ -222,11 +248,12 @@ export class GinkgoTestController {
 
     async executeTestItem(item: vscode.TestItem, run: vscode.TestRun, token: vscode.CancellationToken) {
         // if this is a container, run children - maybe not, ginko runs suites/files only
-        if (item.children.size > 0) {
-            const childItems = Array.from(item.children.values());
-            await Promise.all(childItems.map((c) => this.executeTestItem(c, run, token)));
-            return;
-        }
+        // if (item.children.size > 0) {
+        //     const childItems: vscode.TestItem[] = [];
+        //     item.children.forEach((c) => childItems.push(c));
+        //     await Promise.all(childItems.map((c) => this.executeTestItem(c, run, token)));
+        //     return;
+        // }
 
         run.started(item);
         const meta = this.itemMeta.get(item) || {};
@@ -238,16 +265,31 @@ export class GinkgoTestController {
         const cwd = file ? path.dirname(file) : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
         const outJson = path.join(cwd || '.', 'ginkgo_run_report.json');
-        const args = ['run', `--json-report=${outJson}`, `--focus-file=${file}:${line}`];
+        let args: string[] = [];
+        if (meta.isContainer) {
+            args = ['run', `--json-report=${outJson}`, `--focus=${meta.focus}`];
+        } else {
+            args = ['run', `--json-report=${outJson}`, `--focus-file=${file}:${line}`];
+        }
+        
 
+        // write to the run the exact command being run
+        run.appendOutput(`ginkgo ${args.join(' ')}\r\n`);
         const proc = cp.spawn('ginkgo', args, { cwd: cwd || undefined });
 
         token.onCancellationRequested(() => {
             try { proc.kill(); } catch { }
         });
 
-        proc.stdout.on('data', (c) => run.appendOutput(String(c)));
-        proc.stderr.on('data', (c) => run.appendOutput(String(c)));
+        proc.stdout.on('data', (c) => {
+            // make sure line endings are windows compatible
+            const msg = String(c).replace(/\n/g, '\r\n');
+            run.appendOutput(msg); 
+        });
+        proc.stderr.on('data', (c) => {
+            const msg = String(c).replace(/\n/g, '\r\n');
+            run.appendOutput(msg);
+        });
 
         const exitCode = await new Promise<number>((resolve) => {
             proc.on('close', (code) => resolve(code ?? 0));

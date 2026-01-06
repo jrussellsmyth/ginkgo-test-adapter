@@ -3,30 +3,61 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
-type SuiteEntry = { 
-    file: string; 
-    line: number; 
-    column?: number; 
-    suite: string; 
-    bootstrap: string 
-};
+// should match the struct returned by helpers/discover_suites.go
+// type SuiteEntry = { 
+//     file: string; 
+//     line: number; 
+//     column?: number; 
+//     suite: string; 
+//     entrypoint: string 
+// };
 
+type SuiteJson = {
+        SuitePath: string;
+        SuiteDescription: string;
+        SpecReports: SpecReport[];
+    };
+type SpecReport = {
+        ContainerHierarchyTexts?: string[]; 
+        ContainerHierarchyLocations?: any[];
+        LeafNodeText?: string;
+        LeafNodeLocation?: any;
+        State?: string;
+        Failure?: { Message: string };
+    };
 type TestItemMeta = {
     isSuite?: boolean;
     isContainer?: boolean;
+    focus?: string;
     workspaceFolder: vscode.WorkspaceFolder;
     file: string;
     line: number;
     column?: number;
     suite: string;
-    bootstrap: string;
     spec?: any;
 };
+
+type FullTestItemMeta = {
+    type: 'suite'|'container'|'leaf';
+    suiteKey: string;
+    suitePath: string;
+    containerPath?: string[];
+    file?: string;
+    line?: number;
+    leafText?: string;
+    leafKey?: string;
+    fallbackLeafKey?: string;
+    containerKey?: string;
+    descendantLeafKeys?: Set<string>;
+}
 
 export class GinkgoTestController {
     controller: vscode.TestController;
     watcher: vscode.FileSystemWatcher;
-    itemMeta = new WeakMap<vscode.TestItem, any>();
+    itemMeta = new WeakMap<vscode.TestItem, FullTestItemMeta | any>();
+    // reverse lookup maps
+    leafKeyToTestItem = new Map<string, vscode.TestItem>();
+    containerKeyToLeafKeys = new Map<string, Set<string>>();
     context: vscode.ExtensionContext;
 
     constructor(context: vscode.ExtensionContext) {
@@ -64,28 +95,18 @@ export class GinkgoTestController {
 
     async onTestsChanged(uri: vscode.Uri) {
         // simple approach: clear root and re-discover
-        this.controller.items.forEach((i) => this.controller.items.delete(i.id));
-        await this.discoverWorkspace();
+        // future may use url to find and update specific items
+        if (this.controller?.resolveHandler) {
+            await this.controller.resolveHandler(undefined);
+        }
     }
 
     // discover suites in all workspace folders
     async discoverWorkspace() {
+        this.controller.items.forEach((i) => this.controller.items.delete(i.id));
         const workspaceFolders = vscode.workspace.workspaceFolders || [];
         for (const ws of workspaceFolders) {
-            // ask go helper for suites in this workspace
-            const suites = await this.runGoHelper(this.context, ws.uri.fsPath);
-            for (const s of suites) {
-                const id = `${s.file}::${s.bootstrap}`;
-                const label = `${s.suite}`;
-                const suiteFilePath = path.isAbsolute(s.file) ? s.file : path.join(ws.uri.fsPath, s.file);
-                const item = this.controller.createTestItem(id, label, vscode.Uri.file(suiteFilePath));
-                item.range = new vscode.Range(new vscode.Position(s.line - 1, s.column ? s.column - 1 : 0), new vscode.Position(s.line - 1, s.column ? s.column - 1 : 0));
-                this.controller.items.add(item);
-                this.itemMeta.set(item, { isSuite: true, workspaceFolder: ws, file: suiteFilePath, suite: s.suite, bootstrap: s.bootstrap, spec: undefined } as TestItemMeta);
-
-                // populate children by running a dry-run for this suite
-                this.populateSuiteChildren(item, ws);
-            }
+            this.loadWorkspaceTests(ws);
         }
     }
 
@@ -93,61 +114,74 @@ export class GinkgoTestController {
         // legacy per-file discovery is no longer used; we populate suites in discoverWorkspace
     }
 
-    async populateSuiteChildren(suiteItem: vscode.TestItem, ws: vscode.WorkspaceFolder) {
-        const meta = this.itemMeta.get(suiteItem);
-        if (!meta) {
-            return;
-        }
-        const bootstrap = meta.bootstrap as string;
+    // run ginkgo dry-run from the entrypoint to build the suite tree
+    async loadWorkspaceTests(ws: vscode.WorkspaceFolder) {
+
         const cwd = ws.uri.fsPath;
-        const outJson = path.join(cwd, `ginkgo_discovery_${bootstrap}.json`);
-        const args = ['run', '--dry-run', `--json-report=${outJson}`, '--', `-test.run=^${bootstrap}$`];
+        const outJson = path.join(cwd, `ginkgo_discovery.json`);
+        const args = ['run', '--dry-run', `--json-report=${outJson}`, '-r'];
         try {
             await this.execProcess('ginkgo', args, { cwd });
         } catch (e) {
             // continue
+            // improve error handling later
         }
         if (fs.existsSync(outJson)) {
             const raw = fs.readFileSync(outJson, 'utf8');
             try {
-                const parsed = JSON.parse(raw);
-                this.buildTestTreeFromReport(suiteItem, parsed, ws);
+                const suiteReports = JSON.parse(raw) as SuiteJson[];
+                for (const suiteReport of suiteReports) 
+                {
+                    this.buildSuite(ws, suiteReport);
+                }
             } catch (e) {}
             try { fs.unlinkSync(outJson); } catch {}
         }
     }
-
     // best-effort parser: look for spec reports and their container hierarchies
-    buildTestTreeFromReport(parentTestItem: vscode.TestItem, report: any, ws: vscode.WorkspaceFolder) {
-        // clear existing children
-        parentTestItem.children.forEach((c) => parentTestItem.children.delete(c.id));
+    buildSuite(ws: vscode.WorkspaceFolder, report: SuiteJson) {
 
-        const parentMeta = this.itemMeta.get(parentTestItem);
+        // create top-level suite item
+        const suiteFilePath = path.isAbsolute(report.SuitePath) ? report.SuitePath : path.join(ws.uri.fsPath, report.SuitePath);
+        const suiteLabel = report.SuiteDescription;
+        const suiteId = `${suiteFilePath}::${suiteLabel}`;
+        const suiteKey = this.makeSuiteKey(report.SuitePath);
+        let suiteTestItem = this.controller.items.get(suiteId);
+        if (!suiteTestItem) {
+            suiteTestItem = this.controller.createTestItem(suiteId, suiteLabel, vscode.Uri.file(suiteFilePath));
+            suiteTestItem.range = new vscode.Range(new vscode.Position(0, 0), new vscode.Position(0, 0));
+            this.controller.items.add(suiteTestItem);
+            this.itemMeta.set(suiteTestItem, { type: 'suite', suiteKey, suitePath: suiteFilePath, descendantLeafKeys: new Set<string>() } as FullTestItemMeta);
+        }
+        suiteTestItem.busy = true;
+        suiteTestItem.children.forEach((c) => suiteTestItem.children.delete(c.id));
 
-        const specs = this.findSpecReports(report);
         const rootMap = new Map<string, vscode.TestItem>();
 
-        for (const spec of specs) {
-            const containerHierarchy: string[] = spec.ContainerHierarchyTexts|| [];
+        for (const spec of report.SpecReports) {
+            const containerHierarchy: string[] = spec.ContainerHierarchyTexts || [];
             const locations: any[] = spec.ContainerHierarchyLocations || [];
-            const leaf = spec.LeafNodeText  || 'unnamed';
-            // create container chain
-            let parent = parentTestItem;
-            // iterate containers by index so we can retrieve location
+            const leaf = spec.LeafNodeText || 'unnamed';
+            const containerPath: string[] = [];
+
+            let parent: vscode.TestItem | undefined = suiteTestItem;
             for (let i = 0; i < containerHierarchy.length; i++) {
                 const name = containerHierarchy[i];
                 const location = locations[i] || {};
-                const file = location.FileName || parentMeta?.file;
+                const file = location.FileName || suiteFilePath;
                 const line = location.LineNumber || 1;
 
-                const key = parent.id + '>' + name;
-                let node = rootMap.get(key);
+                const containerId = parent.id + '::' + name;
+                let node = rootMap.get(containerId);
+                containerPath.push(name);
                 if (!node) {
-                    node = this.controller.createTestItem(key, name, vscode.Uri.file( file ));
+                    node = this.controller.createTestItem(containerId, name, vscode.Uri.file(file));
                     node.range = new vscode.Range(new vscode.Position((line as number) - 1, 0), new vscode.Position((line as number) - 1, 0));
-                    this.itemMeta.set(node, { isContainer: true, workspaceFolder: ws, file: file, suite: parentMeta?.suite, bootstrap: parentMeta?.bootstrap, spec: undefined } as TestItemMeta);
+                    const containerKey = this.makeContainerKey(suiteKey, containerPath);
+                    this.itemMeta.set(node, { type: 'container', suiteKey, suitePath: suiteFilePath, containerPath: [...containerPath], file, line, containerKey, descendantLeafKeys: new Set<string>() } as FullTestItemMeta);
+                    if (!this.containerKeyToLeafKeys.has(containerKey)) {this.containerKeyToLeafKeys.set(containerKey, new Set<string>());}
                     parent.children.add(node);
-                    rootMap.set(key, node);
+                    rootMap.set(containerId, node);
                 }
                 parent = node;
             }
@@ -155,47 +189,66 @@ export class GinkgoTestController {
             // create the leaf spec
             const specId = parent.id + '::' + leaf;
             const specLocation = spec.LeafNodeLocation || {};
-            const specFile = specLocation.FileName || parentMeta?.file;
+            const specFile = specLocation.FileName || suiteFilePath;
             const specLine = specLocation.LineNumber || 1;
-            const testItem = this.controller.createTestItem(specId, leaf, vscode.Uri.file( specFile));
-            
+            const testItem = this.controller.createTestItem(specId, leaf, vscode.Uri.file(specFile));
             testItem.range = new vscode.Range(new vscode.Position((specLine as number) - 1, 0), new vscode.Position((specLine as number) - 1, 0));
-            
             parent.children.add(testItem);
-            this.itemMeta.set(testItem, { workspaceFolder: ws, file: specFile
-                , suite: parentMeta?.suite, bootstrap: parentMeta?.bootstrap, spec: spec } as TestItemMeta);
-        }
-    }
 
-    findSpecReports(obj: any): any[] {
-        const found: any[] = [];
-        const visit = (v: any) => {
-            if (!v || typeof v !== 'object') {
-                return;
-            }
-            if (Array.isArray(v)) {
-                for (const e of v) {
-                    visit(e);
-                }
-                return;
-            }
-            // common field in ginkgo reports is SpecReports or spec_reports
-            for (const k of Object.keys(v)) {
-                if (k.toLowerCase().includes('specreport') || k.toLowerCase().includes('specreports')) {
-                    const arr = v[k];
-                    if (Array.isArray(arr)) {
-                        for (const s of arr) {
-                            found.push(s);
-                        }
+            // compute keys and store meta
+            const leafKey = this.makeLeafKey(specFile, specLine, suiteKey, containerPath, leaf);
+            const fallbackLeafKey = this.makeFallbackLeafKey(suiteKey, containerPath, leaf);
+            this.itemMeta.set(testItem, { type: 'leaf', suiteKey, suitePath: suiteFilePath, containerPath: [...containerPath], file: specFile, line: specLine, leafText: leaf, leafKey, fallbackLeafKey } as FullTestItemMeta);
+            if (!this.leafKeyToTestItem.has(leafKey)) {this.leafKeyToTestItem.set(leafKey, testItem);}
+            else {this.leafKeyToTestItem.set(fallbackLeafKey, testItem);}
+
+            // register leafKey with ancestor containers and suite
+            let ancestor: vscode.TestItem | undefined = parent;
+            while (ancestor) {
+                const m = this.itemMeta.get(ancestor) as FullTestItemMeta | undefined;
+                if (m) {
+                    if (!m.descendantLeafKeys) {m.descendantLeafKeys = new Set<string>();}
+                    m.descendantLeafKeys.add(leafKey);
+                    if (m.containerKey) {
+                        const set = this.containerKeyToLeafKeys.get(m.containerKey)!;
+                        set.add(leafKey);
                     }
                 }
+                if (ancestor === suiteTestItem) {break;}
+                const parentId = ancestor.id.substring(0, ancestor.id.lastIndexOf('::'));
+                ancestor = parentId ? this.findTestItemByIdPrefix(parentId) : undefined;
             }
-            for (const k of Object.keys(v)) {
-                visit(v[k]);
-            }
-        };
-        visit(obj);
-        return found;
+        }
+        suiteTestItem.busy = false;
+    }
+
+
+    // helper to find test item by id prefix (exact or child)
+    findTestItemByIdPrefix(prefix: string): vscode.TestItem | undefined {
+        const exact = this.controller.items.get(prefix);
+        if (exact) {return exact;}
+        for (const [, item] of this.controller.items) {
+            const child = item.children.get(prefix);
+            if (child) {return child;}
+        }
+        return undefined;
+    }
+
+    // key helpers
+    makeSuiteKey(suitePath: string) {
+        return path.resolve(suitePath);
+    }
+    makeContainerKey(suiteKey: string, containerPath: string[]) {
+        return `${suiteKey}::C::${containerPath.map((s)=>s.replace(/::/g,'\\::')).join('::')}`;
+    }
+    makeLeafKey(file?: string, line?: number, suiteKey?: string, containerPath: string[] = [], leafText?: string) {
+        if (file && line) {
+            return `${path.resolve(file)}:${line}`;
+        }
+        return this.makeFallbackLeafKey(suiteKey || '.', containerPath, leafText);
+    }
+    makeFallbackLeafKey(suiteKey: string, containerPath: string[], leafText?: string) {
+        return `${suiteKey}::L::${containerPath.map((s)=>s.replace(/::/g,'\\::')).join('::')}::${leafText || ''}`;
     }
 
     async runHandler(request: vscode.TestRunRequest, token: vscode.CancellationToken) {
@@ -221,112 +274,131 @@ export class GinkgoTestController {
     }
 
     async executeTestItem(item: vscode.TestItem, run: vscode.TestRun, token: vscode.CancellationToken) {
-        // if this is a container, run children - maybe not, ginko runs suites/files only
-        if (item.children.size > 0) {
-            const childItems = Array.from(item.children.values());
-            await Promise.all(childItems.map((c) => this.executeTestItem(c, run, token)));
+        run.started(item);
+
+        const meta = this.itemMeta.get(item) as FullTestItemMeta | any;
+
+        const wf = item.uri ? vscode.workspace.getWorkspaceFolder(item.uri) : undefined;
+        const cwd = meta?.file ? path.dirname(meta.file) : (wf?.uri.fsPath || meta?.suitePath || process.cwd());
+
+        const outJson = path.join(cwd || '.', `ginkgo_run_report_${Date.now()}_${process.pid}.json`);
+        let args: string[] = [];
+        if (meta?.type === 'container') {
+            // prefer running the container by the file:line available on the container node
+            if (meta.file && meta.line) {
+                args = ['run', `--json-report=${outJson}`, `--focus-file=${meta.file}:${meta.line}`];
+            } else {
+                const focus = meta.containerPath?.join('::') || meta.leafText || '';
+                args = ['run', `--json-report=${outJson}`, `--focus=${focus}`];
+            }
+        } else if (meta?.type === 'leaf') {
+            args = ['run', `--json-report=${outJson}`, `--focus-file=${meta.file}:${meta.line}`];
+        } else {
+            args = ['run', `--json-report=${outJson}`, '-r'];
+        }
+
+        run.appendOutput(`ginkgo ${args.join(' ')}\r\n\r\n`);
+        const proc = cp.spawn('ginkgo', args, { cwd: cwd || undefined });
+        token.onCancellationRequested(() => { try { proc.kill(); } catch {} });
+
+        let stdout = '';
+        proc.stdout.on('data', (c) => { const msg = String(c); stdout += msg; run.appendOutput(msg.replace(/\n/g,'\r\n')); });
+        proc.stderr.on('data', (c) => run.appendOutput(String(c).replace(/\n/g,'\r\n')));
+
+        const exitCode = await new Promise<number>((resolve) => proc.on('close', (code) => resolve(code ?? 0)));
+
+        const parsedSpecMap = new Map<string, any>();
+        try {
+            if (fs.existsSync(outJson)) {
+                const raw = fs.readFileSync(outJson, 'utf8');
+                const parsed = JSON.parse(raw) as SuiteJson[];
+                for (const suite of parsed) {
+                    const suiteKey = this.makeSuiteKey(suite.SuitePath);
+                    for (const s of suite.SpecReports) {
+                        const containers = s.ContainerHierarchyTexts || [];
+                        const loc = s.LeafNodeLocation || {};
+                        const pk = this.makeLeafKey(loc.FileName, loc.LineNumber, suiteKey, containers, s.LeafNodeText);
+                        parsedSpecMap.set(pk, s);
+                        const fk = this.makeFallbackLeafKey(suiteKey, containers, s.LeafNodeText);
+                        if (!parsedSpecMap.has(fk)) {parsedSpecMap.set(fk, s);}
+                    }
+                }
+            } else {
+                const parsed = JSON.parse(stdout || '[]') as SuiteJson[];
+                for (const suite of parsed) {
+                    const suiteKey = this.makeSuiteKey(suite.SuitePath);
+                    for (const s of suite.SpecReports) {
+                        const containers = s.ContainerHierarchyTexts || [];
+                        const loc = s.LeafNodeLocation || {};
+                        const pk = this.makeLeafKey(loc.FileName, loc.LineNumber, suiteKey, containers, s.LeafNodeText);
+                        parsedSpecMap.set(pk, s);
+                        const fk = this.makeFallbackLeafKey(suiteKey, containers, s.LeafNodeText);
+                        if (!parsedSpecMap.has(fk)) {parsedSpecMap.set(fk, s);}
+                    }
+                }
+            }
+        } catch (e) {
+            run.appendOutput('Failed parsing ginkgo JSON: ' + String(e) + '\r\n');
+        } finally {
+            try { fs.unlinkSync(outJson); } catch {}
+        }
+
+        const applySpecToItem = (ti: vscode.TestItem, s: any) => {
+            const state = s.State || '';
+            if (state === 'passed') { run.passed(ti); return; }
+            if (state === 'skipped' || state === 'pending') { run.skipped(ti); return; }
+            const msg = (s.Failure && s.Failure.Message) || 'Failed';
+            run.failed(ti, new vscode.TestMessage(msg));
+        };
+
+        if (meta?.type === 'leaf') {
+            const leafKey = meta.leafKey || this.makeLeafKey(meta.file, meta.line, meta.suiteKey, meta.containerPath || [], meta.leafText);
+            const s = parsedSpecMap.get(leafKey) || parsedSpecMap.get(meta.fallbackLeafKey || '');
+            if (s) {
+                const mapped = this.leafKeyToTestItem.get(leafKey) || this.leafKeyToTestItem.get(meta.fallbackLeafKey || leafKey) || item;
+                applySpecToItem(mapped, s);
+            } else {
+                if (exitCode === 0) {run.passed(item);} else {run.failed(item, new vscode.TestMessage('Failed'));}
+            }
             return;
         }
 
-        run.started(item);
-        const meta = this.itemMeta.get(item) || {};
-        const spec = meta.spec || {};
-
-        const file = spec.LeafNodeLocation?.FileName || '';
-        const line = spec.LeafNodeLocation?.LineNumber || 1;
-
-        const cwd = file ? path.dirname(file) : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-
-        const outJson = path.join(cwd || '.', 'ginkgo_run_report.json');
-        const args = ['run', `--json-report=${outJson}`, `--focus-file=${file}:${line}`];
-
-        const proc = cp.spawn('ginkgo', args, { cwd: cwd || undefined });
-
-        token.onCancellationRequested(() => {
-            try { proc.kill(); } catch { }
-        });
-
-        proc.stdout.on('data', (c) => run.appendOutput(String(c)));
-        proc.stderr.on('data', (c) => run.appendOutput(String(c)));
-
-        const exitCode = await new Promise<number>((resolve) => {
-            proc.on('close', (code) => resolve(code ?? 0));
-        });
-
-        // parse report
-        if (fs.existsSync(outJson)) {
-            try {
-                const raw = fs.readFileSync(outJson, 'utf8');
-                const parsed = JSON.parse(raw);
-                // find spec report matching this item (best-effort)
-                const specs = this.findSpecReports(parsed);
-                let matched = null;
-                for (const s of specs) {
-                    const leaf = (s.LeafNodeText ) as string || s.description || '';
-                    if (leaf && leaf === item.label) { matched = s; break; }
+        if (meta?.type === 'container' || meta?.type === 'suite') {
+            const descendants = meta.descendantLeafKeys || (meta.containerKey ? this.containerKeyToLeafKeys.get(meta.containerKey) || new Set<string>() : new Set<string>());
+            let aggState: 'failed' | 'passed' | 'skipped' = 'skipped';
+            let anyFound = false;
+            for (const lk of descendants) {
+                const mappedItem = this.leafKeyToTestItem.get(lk);
+                const s = parsedSpecMap.get(lk);
+                if (mappedItem && s) {
+                    anyFound = true;
+                    applySpecToItem(mappedItem, s);
+                    const st = s.State || '';
+                    if (st === 'failed') aggState = 'failed';
+                    else if (st === 'passed' && aggState !== 'failed') aggState = 'passed';
+                } else if (mappedItem) {
+                    anyFound = true;
+                    if (exitCode === 0) { run.passed(mappedItem); if (aggState !== 'failed') aggState = 'passed'; }
+                    else { run.failed(mappedItem, new vscode.TestMessage('Failed')); aggState = 'failed'; }
                 }
-                if (matched) {
-                    const state = matched.State || '';
-                    if (state === 'passed' || matched.State === 'passed') { run.passed(item); }
-                    else if (state === 'skipped' || state === 'pending') { run.skipped(item); }
-                    else { 
-                        const msg = (matched.Failure && matched.Failure.Message) || 'Failed';
-                        run.failed(item, new vscode.TestMessage(msg)); 
-                    }
-                
-                } else {
-                    if (exitCode === 0) { run.passed(item); } else { run.failed(item, new vscode.TestMessage('Failed')); }
-                }
-            } catch (e) {
-                if (exitCode === 0) { run.passed(item); } else { run.failed(item, new vscode.TestMessage('Failed')); }
             }
-            try { fs.unlinkSync(outJson); } catch { }
-        } else {
-            if (exitCode === 0) {
-                run.passed(item);
+            if (anyFound) {
+                if (aggState === 'failed') run.failed(item, new vscode.TestMessage('One or more child tests failed'));
+                else if (aggState === 'passed') run.passed(item);
+                else run.skipped(item);
             } else {
-                run.failed(item, new vscode.TestMessage('Failed'));
+                if (exitCode === 0) run.passed(item); else run.failed(item, new vscode.TestMessage('Failed'));
+            }
+            return;
+        }
+
+        for (const [k, ti] of this.leafKeyToTestItem.entries()) {
+            if (ti.label === item.label) {
+                const s = parsedSpecMap.get(k);
+                if (s) {applySpecToItem(ti, s);}
+                else if (exitCode === 0) {run.passed(ti);} else {run.failed(ti, new vscode.TestMessage('Failed'));}
             }
         }
-    }
-
-    runGoHelper(context: vscode.ExtensionContext, workspaceRoot: string): Promise<SuiteEntry[]> {
-        return new Promise((resolve) => {
-            const helperSourcePath = path.join(context.extensionPath, 'helpers', 'discover_suites.go');
-
-            // prefer a prebuilt binary in dist/<platform>-<arch>/discover_suites
-            const platform = process.platform; // 'linux'|'darwin'|'win32'
-            const arch = process.arch; // 'x64'|'arm64' etc
-            const archMap: { [k: string]: string } = { x64: 'amd64', arm64: 'arm64' };
-            const archName = archMap[arch] || arch;
-            const platName = platform === 'win32' ? 'windows' : platform;
-            const exeName = platform === 'win32' ? 'discover_suites.exe' : 'discover_suites';
-            const binaryPath = path.join(context.extensionPath, 'dist', `${platName}-${archName}`, exeName);
-
-            let proc: cp.ChildProcessWithoutNullStreams;
-            if (fs.existsSync(binaryPath)) {
-                const args = ['-dir', workspaceRoot];
-                proc = cp.spawn(binaryPath, args, { cwd: workspaceRoot });
-            } else if (fs.existsSync(helperSourcePath)) {
-                const args = ['run', helperSourcePath, '-dir', workspaceRoot];
-                proc = cp.spawn('go', args, { cwd: workspaceRoot });
-            } else {
-                console.error('discover_suites helper not found (no binary and no source)');
-                resolve([]);
-                return;
-            }
-            let out = '';
-            proc.stdout.on('data', (c) => out += String(c));
-            proc.stderr.on('data', (c) => console.error(String(c)));
-            proc.on('close', () => {
-                try {
-                    const parsed = JSON.parse(out || '[]');
-                    resolve(parsed as SuiteEntry[]);
-                } catch (e) {
-                    resolve([]);
-                }
-            });
-        });
     }
 
     execProcess(cmd: string, args: string[], opts: cp.SpawnOptions = {}): Promise<void> {

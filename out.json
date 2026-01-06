@@ -1,0 +1,344 @@
+[
+  {
+    "SuitePath": "/workspaces/ginkgo-test-adapter/ginkgo-example",
+    "SuiteDescription": "Example Suite",
+    "SuiteLabels": [],
+    "SuiteSemVerConstraints": [],
+    "SuiteSucceeded": true,
+    "SuiteHasProgrammaticFocus": false,
+    "SpecialSuiteFailureReasons": null,
+    "PreRunStats": {
+      "TotalSpecs": 4,
+      "SpecsThatWillRun": 4
+    },
+    "StartTime": "2026-01-02T03:33:18.939877028Z",
+    "EndTime": "2026-01-02T03:33:18.94028567Z",
+    "RunTime": 408642,
+    "SuiteConfig": {
+      "RandomSeed": 1767324798,
+      "RandomizeAllSpecs": false,
+      "FocusStrings": null,
+      "SkipStrings": null,
+      "FocusFiles": null,
+      "SkipFiles": null,
+      "LabelFilter": "",
+      "SemVerFilter": "",
+      "FailOnPending": false,
+      "FailOnEmpty": false,
+      "FailFast": false,
+      "FlakeAttempts": 0,
+      "MustPassRepeatedly": 0,
+      "DryRun": false,
+      "PollProgressAfter": 0,
+      "PollProgressInterval": 0,
+      "Timeout": 3599488107947,
+      "EmitSpecProgress": false,
+      "OutputInterceptorMode": "",
+      "SourceRoots": null,
+      "GracePeriod": 30000000000,
+      "ParallelProcess": 1,
+      "ParallelTotal": 1,
+      "ParallelHost": ""
+    },
+    "SpecReports": [
+      {
+        "ContainerHierarchyTexts": [
+          "GinkgoStandardLibraryBehavior"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+            "LineNumber": 24
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          []
+        ],
+        "ContainerHierarchySemVerConstraints": [
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+          "LineNumber": 25
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeSemVerConstraints": [],
+        "LeafNodeText": "calculates string length",
+        "State": "passed",
+        "StartTime": "2026-01-02T03:33:18.939951853Z",
+        "EndTime": "2026-01-02T03:33:18.940038654Z",
+        "RunTime": 86801,
+        "ParallelProcess": 1,
+        "NumAttempts": 1,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0,
+        "SpecEvents": [
+          {
+            "SpecEventType": "Node",
+            "CodeLocation": {
+              "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+              "LineNumber": 25
+            },
+            "TimelineLocation": {
+              "Order": 1,
+              "Time": "2026-01-02T03:33:18.939978907Z"
+            },
+            "Message": "calculates string length",
+            "NodeType": "It"
+          },
+          {
+            "SpecEventType": "Node (End)",
+            "CodeLocation": {
+              "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+              "LineNumber": 25
+            },
+            "TimelineLocation": {
+              "Order": 3,
+              "Time": "2026-01-02T03:33:18.940036301Z"
+            },
+            "Message": "calculates string length",
+            "Duration": 57394,
+            "NodeType": "It"
+          }
+        ]
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "GinkgoAdd",
+          "when adding two numbers"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+            "LineNumber": 11
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "ContainerHierarchySemVerConstraints": [
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+          "LineNumber": 12
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeSemVerConstraints": [],
+        "LeafNodeText": "returns the correct sum",
+        "State": "passed",
+        "StartTime": "2026-01-02T03:33:18.940071365Z",
+        "EndTime": "2026-01-02T03:33:18.940115467Z",
+        "RunTime": 44101,
+        "ParallelProcess": 1,
+        "NumAttempts": 1,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0,
+        "SpecEvents": [
+          {
+            "SpecEventType": "Node",
+            "CodeLocation": {
+              "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+              "LineNumber": 12
+            },
+            "TimelineLocation": {
+              "Order": 4,
+              "Time": "2026-01-02T03:33:18.940072575Z"
+            },
+            "Message": "returns the correct sum",
+            "NodeType": "It"
+          },
+          {
+            "SpecEventType": "Node (End)",
+            "CodeLocation": {
+              "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+              "LineNumber": 12
+            },
+            "TimelineLocation": {
+              "Order": 6,
+              "Time": "2026-01-02T03:33:18.940113585Z"
+            },
+            "Message": "returns the correct sum",
+            "Duration": 40999,
+            "NodeType": "It"
+          }
+        ]
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "GinkgoAdd"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+            "LineNumber": 10
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          []
+        ],
+        "ContainerHierarchySemVerConstraints": [
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+          "LineNumber": 16
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeSemVerConstraints": [],
+        "LeafNodeText": "adds two numbers",
+        "State": "passed",
+        "StartTime": "2026-01-02T03:33:18.940138565Z",
+        "EndTime": "2026-01-02T03:33:18.94020611Z",
+        "RunTime": 67545,
+        "ParallelProcess": 1,
+        "NumAttempts": 1,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0,
+        "SpecEvents": [
+          {
+            "SpecEventType": "Node",
+            "CodeLocation": {
+              "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+              "LineNumber": 16
+            },
+            "TimelineLocation": {
+              "Order": 7,
+              "Time": "2026-01-02T03:33:18.940171843Z"
+            },
+            "Message": "adds two numbers",
+            "NodeType": "It"
+          },
+          {
+            "SpecEventType": "Node (End)",
+            "CodeLocation": {
+              "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+              "LineNumber": 16
+            },
+            "TimelineLocation": {
+              "Order": 9,
+              "Time": "2026-01-02T03:33:18.940204535Z"
+            },
+            "Message": "adds two numbers",
+            "Duration": 32692,
+            "NodeType": "It"
+          }
+        ]
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "GinkgoAdd"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+            "LineNumber": 10
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          []
+        ],
+        "ContainerHierarchySemVerConstraints": [
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+          "LineNumber": 19
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeSemVerConstraints": [],
+        "LeafNodeText": "puts on the lotion",
+        "State": "passed",
+        "StartTime": "2026-01-02T03:33:18.940235566Z",
+        "EndTime": "2026-01-02T03:33:18.940262054Z",
+        "RunTime": 26488,
+        "ParallelProcess": 1,
+        "NumAttempts": 1,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0,
+        "SpecEvents": [
+          {
+            "SpecEventType": "Node",
+            "CodeLocation": {
+              "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+              "LineNumber": 19
+            },
+            "TimelineLocation": {
+              "Order": 10,
+              "Time": "2026-01-02T03:33:18.940236603Z"
+            },
+            "Message": "puts on the lotion",
+            "NodeType": "It"
+          },
+          {
+            "SpecEventType": "Node (End)",
+            "CodeLocation": {
+              "FileName": "/workspaces/ginkgo-test-adapter/ginkgo-example/example_ginkgo_test.go",
+              "LineNumber": 19
+            },
+            "TimelineLocation": {
+              "Order": 12,
+              "Time": "2026-01-02T03:33:18.940260594Z"
+            },
+            "Message": "puts on the lotion",
+            "Duration": 23991,
+            "NodeType": "It"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "SuitePath": "/workspaces/ginkgo-test-adapter/secondtest",
+    "SuiteDescription": "Root Suite",
+    "SuiteLabels": [],
+    "SuiteSemVerConstraints": [],
+    "SuiteSucceeded": true,
+    "SuiteHasProgrammaticFocus": false,
+    "SpecialSuiteFailureReasons": null,
+    "PreRunStats": {
+      "TotalSpecs": 0,
+      "SpecsThatWillRun": 0
+    },
+    "StartTime": "2026-01-02T03:33:19.427594771Z",
+    "EndTime": "2026-01-02T03:33:19.427673322Z",
+    "RunTime": 78513,
+    "SuiteConfig": {
+      "RandomSeed": 1767324798,
+      "RandomizeAllSpecs": false,
+      "FocusStrings": null,
+      "SkipStrings": null,
+      "FocusFiles": null,
+      "SkipFiles": null,
+      "LabelFilter": "",
+      "SemVerFilter": "",
+      "FailOnPending": false,
+      "FailOnEmpty": false,
+      "FailFast": false,
+      "FlakeAttempts": 0,
+      "MustPassRepeatedly": 0,
+      "DryRun": false,
+      "PollProgressAfter": 0,
+      "PollProgressInterval": 0,
+      "Timeout": 3598999998071,
+      "EmitSpecProgress": false,
+      "OutputInterceptorMode": "",
+      "SourceRoots": null,
+      "GracePeriod": 30000000000,
+      "ParallelProcess": 1,
+      "ParallelTotal": 1,
+      "ParallelHost": ""
+    },
+    "SpecReports": null
+  }
+]

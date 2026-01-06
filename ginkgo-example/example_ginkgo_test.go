@@ -26,3 +26,11 @@ var _ = Describe("GinkgoStandardLibraryBehavior", func() {
 		Expect(len("Hello, Go")).To(Equal(9))
 	})
 })
+
+var _ = DescribeTable("GinkgoTableTest",
+	func(stringone string, stringtwo string, totallen int) {
+		Expect(len(stringone) + len(stringtwo)).To(Equal(totallen))
+	},
+	Entry("first and second", "first", "second", 11),
+	Entry("foo and bar", "foo", "bar", 6),
+)

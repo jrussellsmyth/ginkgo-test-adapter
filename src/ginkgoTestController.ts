@@ -335,7 +335,7 @@ export class GinkgoTestController {
 
         // Get build tags
         const buildTags = this.getBuildTags();
-        if (buildTags.length > 0 && !isDebug) {
+        if (buildTags.length > 0) {
             args.push(`--tags=${buildTags.join(',')}`);
         }
 
@@ -362,7 +362,7 @@ export class GinkgoTestController {
                     debugConfig.buildFlags = `-tags=${buildTags.join(',')}`;
                 }
                 
-                run.appendOutput(`debugging: ${meta.label} ${args.join(' ')}\r\n\r\n`);
+                run.appendOutput(`debugging: ${meta.itemLabel || item.label} ${args.join(' ')}\r\n\r\n`);
 
                 const started = await vscode.debug.startDebugging(wf, debugConfig);
                 if (!started) {

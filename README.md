@@ -1,71 +1,51 @@
-# ginkgo-test-adapter README
+# ginkgo-test-adapter
 
-This is the README for your extension "ginkgo-test-adapter". After writing up a brief description, we recommend including the following sections.
+A Visual Studio Code extension that adds Ginkgo test support to the VS Code Test Explorer.
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+This extension provides comprehensive support for running and debugging Ginkgo tests in VS Code:
 
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+* **Test Explorer Integration**: All Ginkgo tests are automatically discovered and displayed in the VS Code Test Explorer sidebar
+* **Code Lens Support**: "▶ Run Test" and "🐛 Debug Test" code lenses appear directly in your test files above each test specification and container
+* **Test Execution**: Run individual tests, test containers, or entire test suites from the Test Explorer or Code Lens
+* **Debug Support**: Debug Ginkgo tests with full breakpoint support
+* **Automatic Test Discovery**: Tests are automatically discovered when you open a workspace containing Ginkgo tests
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+* [Ginkgo](https://onsi.github.io/ginkgo/) must be installed and available in your PATH
+* Go 1.16 or higher
+
+## Using Code Lens
+
+When you open a Ginkgo test file (`*_test.go`), the extension automatically displays Code Lens actions above each test:
+
+* **▶ Run Test**: Executes the test and displays results in the Test Explorer
+* **🐛 Debug Test**: Starts a debug session for the test with breakpoint support
+
+Code Lens actions are available for:
+* Individual test specifications (`It`, `Specify`, table test entries)
+* Test containers (`Describe`, `Context`, `When`)
 
 ## Extension Settings
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+This extension does not currently contribute any VS Code settings.
 
 ## Known Issues
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+Please report issues on the [GitHub repository](https://github.com/jrussellsmyth/ginkgo-test-adapter/issues).
 
 ## Release Notes
 
-Users appreciate release notes as you update your extension.
+### 0.0.1
 
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+Initial release with:
+* Test Explorer integration
+* Code Lens support for run and debug actions
+* Automatic test discovery
+* Support for test containers and individual specs
 
 ---
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
 
 **Enjoy!**

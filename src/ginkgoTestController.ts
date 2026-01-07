@@ -41,6 +41,7 @@ type FullTestItemMeta = {
     type: 'suite'|'container'|'leaf';
     suiteKey: string;
     suitePath: string;
+    itemLabel?: string;
     containerPath?: string[];
     file?: string;
     line?: number;
@@ -151,7 +152,7 @@ export class GinkgoTestController {
             suiteTestItem = this.controller.createTestItem(suiteId, suiteLabel, vscode.Uri.file(suiteFilePath));
             suiteTestItem.range = new vscode.Range(new vscode.Position(0, 0), new vscode.Position(0, 0));
             this.controller.items.add(suiteTestItem);
-            this.itemMeta.set(suiteTestItem, { type: 'suite', suiteKey, suitePath: suiteFilePath, descendantLeafKeys: new Set<string>() } as FullTestItemMeta);
+            this.itemMeta.set(suiteTestItem, { type: 'suite', suiteKey, suitePath: suiteFilePath, itemLabel: suiteLabel, descendantLeafKeys: new Set<string>() } as FullTestItemMeta);
         }
         suiteTestItem.busy = true;
         suiteTestItem.children.forEach((c) => suiteTestItem.children.delete(c.id));
@@ -178,7 +179,7 @@ export class GinkgoTestController {
                     node = this.controller.createTestItem(containerId, name, vscode.Uri.file(file));
                     node.range = new vscode.Range(new vscode.Position((line as number) - 1, 0), new vscode.Position((line as number) - 1, 0));
                     const containerKey = this.makeContainerKey(suiteKey, containerPath);
-                    this.itemMeta.set(node, { type: 'container', suiteKey, suitePath: suiteFilePath, containerPath: [...containerPath], file, line, containerKey, descendantLeafKeys: new Set<string>() } as FullTestItemMeta);
+                    this.itemMeta.set(node, { type: 'container', itemLabel: name, suiteKey, suitePath: suiteFilePath, containerPath: [...containerPath], file, line, containerKey, descendantLeafKeys: new Set<string>() } as FullTestItemMeta);
                     if (!this.containerKeyToLeafKeys.has(containerKey)) {this.containerKeyToLeafKeys.set(containerKey, new Set<string>());}
                     parent.children.add(node);
                     rootMap.set(containerId, node);
@@ -198,7 +199,7 @@ export class GinkgoTestController {
             // compute keys and store meta
             const leafKey = this.makeLeafKey(specFile, specLine, suiteKey, containerPath, leaf);
             const fallbackLeafKey = this.makeFallbackLeafKey(suiteKey, containerPath, leaf);
-            this.itemMeta.set(testItem, { type: 'leaf', suiteKey, suitePath: suiteFilePath, containerPath: [...containerPath], file: specFile, line: specLine, leafText: leaf, leafKey, fallbackLeafKey } as FullTestItemMeta);
+            this.itemMeta.set(testItem, { type: 'leaf', itemLabel: leaf, suiteKey, suitePath: suiteFilePath, containerPath: [...containerPath], file: specFile, line: specLine, leafText: leaf, leafKey, fallbackLeafKey } as FullTestItemMeta);
             if (!this.leafKeyToTestItem.has(leafKey)) {this.leafKeyToTestItem.set(leafKey, testItem);}
             else {this.leafKeyToTestItem.set(fallbackLeafKey, testItem);}
 
@@ -263,17 +264,16 @@ export class GinkgoTestController {
 
         for (const t of toRun) {
             if (request.profile?.kind === vscode.TestRunProfileKind.Debug) {
-                // Debug not implemented
-                run.errored(t, new vscode.TestMessage('Debugging not supported yet'));
-                continue;
+                await this.executeTestItem(t, run, token, true);
+            } else {
+                await this.executeTestItem(t, run, token);
             }
-            await this.executeTestItem(t, run, token);
         }
 
         run.end();
     }
 
-    async executeTestItem(item: vscode.TestItem, run: vscode.TestRun, token: vscode.CancellationToken) {
+    async executeTestItem(item: vscode.TestItem, run: vscode.TestRun, token: vscode.CancellationToken, isDebug?: boolean) {
         run.started(item);
 
         const meta = this.itemMeta.get(item) as FullTestItemMeta | any;
@@ -282,30 +282,67 @@ export class GinkgoTestController {
         const cwd = meta?.file ? path.dirname(meta.file) : (wf?.uri.fsPath || meta?.suitePath || process.cwd());
 
         const outJson = path.join(cwd || '.', `ginkgo_run_report_${Date.now()}_${process.pid}.json`);
+        let stdout = '';
+        let exitCode = 0;
         let args: string[] = [];
+        let argPrefix = '--';
+        
+        if (isDebug) { argPrefix = '-ginkgo.'; }
         if (meta?.type === 'container') {
             // prefer running the container by the file:line available on the container node
             if (meta.file && meta.line) {
-                args = ['run', `--json-report=${outJson}`, `--focus-file=${meta.file}:${meta.line}`];
+                args = [`${argPrefix}json-report=${outJson}`, `${argPrefix}focus-file=${meta.file}:${meta.line}`];
             } else {
                 const focus = meta.containerPath?.join('::') || meta.leafText || '';
-                args = ['run', `--json-report=${outJson}`, `--focus=${focus}`];
+                args = [`${argPrefix}json-report=${outJson}`, `${argPrefix}focus=${focus}`];
             }
         } else if (meta?.type === 'leaf') {
-            args = ['run', `--json-report=${outJson}`, `--focus-file=${meta.file}:${meta.line}`];
+            args = [ `${argPrefix}json-report=${outJson}`, `${argPrefix}focus-file=${meta.file}:${meta.line}`];
         } else {
-            args = ['run', `--json-report=${outJson}`, '-r'];
+            args = [ `${argPrefix}json-report=${outJson}`, '-r'];
         }
 
-        run.appendOutput(`ginkgo ${args.join(' ')}\r\n\r\n`);
-        const proc = cp.spawn('ginkgo', args, { cwd: cwd || undefined });
-        token.onCancellationRequested(() => { try { proc.kill(); } catch {} });
+        if (isDebug) {
+            const dbgName = `Ginkgo Debug ${Date.now()}`;
+            const binaryBase = `ginkgo_test_bin_${Date.now()}_${process.pid}`;
+            const binaryName = process.platform === 'win32' ? `${binaryBase}.exe` : binaryBase;
 
-        let stdout = '';
-        proc.stdout.on('data', (c) => { const msg = String(c); stdout += msg; run.appendOutput(msg.replace(/\n/g,'\r\n')); });
-        proc.stderr.on('data', (c) => run.appendOutput(String(c).replace(/\n/g,'\r\n')));
+            // build the test binary in the workspace (go test -c -o <binary>)
+            try {
+                
+                const debugConfig: any = {
+                    name: dbgName,
+                    type: 'go',
+                    request: 'launch',
+                    mode: 'auto',
+                    program: meta.file,
+                    args: args,
+                    cwd: cwd || undefined,
+                };
+                run.appendOutput(`debugging: ${meta.label} ${args.join(' ')}\r\n\r\n`);
 
-        const exitCode = await new Promise<number>((resolve) => proc.on('close', (code) => resolve(code ?? 0)));
+                const started = await vscode.debug.startDebugging(wf, debugConfig);
+                if (!started) {
+                    run.appendOutput('Debug session failed to start\r\n');
+                    return;
+                }
+            } catch (e) {
+                run.appendOutput('Build or debug failed: ' + String(e) + '\r\n');
+                return;
+            } 
+        } else {
+           
+               
+            args = ['run', ...args];
+            run.appendOutput(`ginkgo ${args.join(' ')}\r\n\r\n`);
+            const proc = cp.spawn('ginkgo', args, { cwd: cwd || undefined });
+            token.onCancellationRequested(() => { try { proc.kill(); } catch {} });
+
+            proc.stdout.on('data', (c) => { const msg = String(c); stdout += msg; run.appendOutput(msg.replace(/\n/g,'\r\n')); });
+            proc.stderr.on('data', (c) => run.appendOutput(String(c).replace(/\n/g,'\r\n')));
+
+            exitCode = await new Promise<number>((resolve) => proc.on('close', (code) => resolve(code ?? 0)));
+        }
 
         const parsedSpecMap = new Map<string, any>();
         try {
@@ -324,18 +361,7 @@ export class GinkgoTestController {
                     }
                 }
             } else {
-                const parsed = JSON.parse(stdout || '[]') as SuiteJson[];
-                for (const suite of parsed) {
-                    const suiteKey = this.makeSuiteKey(suite.SuitePath);
-                    for (const s of suite.SpecReports) {
-                        const containers = s.ContainerHierarchyTexts || [];
-                        const loc = s.LeafNodeLocation || {};
-                        const pk = this.makeLeafKey(loc.FileName, loc.LineNumber, suiteKey, containers, s.LeafNodeText);
-                        parsedSpecMap.set(pk, s);
-                        const fk = this.makeFallbackLeafKey(suiteKey, containers, s.LeafNodeText);
-                        if (!parsedSpecMap.has(fk)) {parsedSpecMap.set(fk, s);}
-                    }
-                }
+                run.appendOutput('No ginkgo JSON report found\r\n');
             }
         } catch (e) {
             run.appendOutput('Failed parsing ginkgo JSON: ' + String(e) + '\r\n');
@@ -374,20 +400,20 @@ export class GinkgoTestController {
                     anyFound = true;
                     applySpecToItem(mappedItem, s);
                     const st = s.State || '';
-                    if (st === 'failed') aggState = 'failed';
-                    else if (st === 'passed' && aggState !== 'failed') aggState = 'passed';
+                    if (st === 'failed') {aggState = 'failed';}
+                    else if (st === 'passed' && aggState !== 'failed') {aggState = 'passed';}
                 } else if (mappedItem) {
                     anyFound = true;
-                    if (exitCode === 0) { run.passed(mappedItem); if (aggState !== 'failed') aggState = 'passed'; }
+                    if (exitCode === 0) { run.passed(mappedItem); if (aggState !== 'failed') {aggState = 'passed';} }
                     else { run.failed(mappedItem, new vscode.TestMessage('Failed')); aggState = 'failed'; }
                 }
             }
             if (anyFound) {
-                if (aggState === 'failed') run.failed(item, new vscode.TestMessage('One or more child tests failed'));
-                else if (aggState === 'passed') run.passed(item);
-                else run.skipped(item);
+                if (aggState === 'failed') {run.failed(item, new vscode.TestMessage('One or more child tests failed'));}
+                else if (aggState === 'passed') {run.passed(item);}
+                else {run.skipped(item);}
             } else {
-                if (exitCode === 0) run.passed(item); else run.failed(item, new vscode.TestMessage('Failed'));
+                if (exitCode === 0) {run.passed(item);} else {run.failed(item, new vscode.TestMessage('Failed'));}
             }
             return;
         }

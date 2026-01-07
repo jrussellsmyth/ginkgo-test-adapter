@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { DEFAULT_GINKGO_PATH, DEFAULT_ENVIRONMENT_VARIABLES, DEFAULT_BUILD_TAGS } from './constants';
 
 // should match the struct returned by helpers/discover_suites.go
 // type SuiteEntry = { 
@@ -92,6 +93,22 @@ export class GinkgoTestController {
         context.subscriptions.push(this.controller, this.watcher);
     }
 
+    // Configuration helpers
+    getGinkgoPath(): string {
+        const config = vscode.workspace.getConfiguration('ginkgoTestAdapter');
+        return config.get<string>('ginkgoPath', DEFAULT_GINKGO_PATH);
+    }
+
+    getEnvironmentVariables(): Record<string, string> {
+        const config = vscode.workspace.getConfiguration('ginkgoTestAdapter');
+        return config.get<Record<string, string>>('environmentVariables', DEFAULT_ENVIRONMENT_VARIABLES);
+    }
+
+    getBuildTags(): string[] {
+        const config = vscode.workspace.getConfiguration('ginkgoTestAdapter');
+        return config.get<string[]>('buildTags', DEFAULT_BUILD_TAGS);
+    }
+
     dispose(): any {
         try { this.watcher.dispose(); } catch { }
         try { this.controller.dispose(); } catch { }
@@ -128,8 +145,15 @@ export class GinkgoTestController {
         const cwd = ws.uri.fsPath;
         const outJson = path.join(cwd, `ginkgo_discovery.json`);
         const args = ['run', '--dry-run', `--json-report=${outJson}`, '-r'];
+        
+        // Add build tags if configured
+        const buildTags = this.getBuildTags();
+        if (buildTags.length > 0) {
+            args.push(`--tags=${buildTags.join(',')}`);
+        }
+        
         try {
-            await this.execProcess('ginkgo', args, { cwd });
+            await this.execProcess(this.getGinkgoPath(), args, { cwd });
         } catch (e) {
             // continue
             // improve error handling later
@@ -309,9 +333,18 @@ export class GinkgoTestController {
             args = [ `${argPrefix}json-report=${outJson}`, '-r'];
         }
 
+        // Get build tags
+        const buildTags = this.getBuildTags();
+        if (buildTags.length > 0 && !isDebug) {
+            args.push(`--tags=${buildTags.join(',')}`);
+        }
+
         if (isDebug) {
             const dbgName = `Ginkgo Debug ${Date.now()}`;
             try {
+                
+                // Get environment variables and merge with current env
+                const envVars = this.getEnvironmentVariables();
                 
                 const debugConfig: any = {
                     name: dbgName,
@@ -321,7 +354,14 @@ export class GinkgoTestController {
                     program: meta.file,
                     args: args,
                     cwd: cwd || undefined,
+                    env: envVars,
                 };
+                
+                // Add build tags to debug config if specified
+                if (buildTags.length > 0) {
+                    debugConfig.buildFlags = `-tags=${buildTags.join(',')}`;
+                }
+                
                 run.appendOutput(`debugging: ${meta.label} ${args.join(' ')}\r\n\r\n`);
 
                 const started = await vscode.debug.startDebugging(wf, debugConfig);
@@ -337,8 +377,14 @@ export class GinkgoTestController {
            
                
             args = ['run', ...args];
-            run.appendOutput(`ginkgo ${args.join(' ')}\r\n\r\n`);
-            const proc = cp.spawn('ginkgo', args, { cwd: cwd || undefined });
+            const ginkgoPath = this.getGinkgoPath();
+            run.appendOutput(`${ginkgoPath} ${args.join(' ')}\r\n\r\n`);
+            
+            // Get environment variables and merge with current env
+            const envVars = this.getEnvironmentVariables();
+            const env = { ...process.env, ...envVars };
+            
+            const proc = cp.spawn(ginkgoPath, args, { cwd: cwd || undefined, env });
             token.onCancellationRequested(() => { try { proc.kill(); } catch {} });
 
             proc.stdout.on('data', (c) => { const msg = String(c); stdout += msg; run.appendOutput(msg.replace(/\n/g,'\r\n')); });
@@ -432,7 +478,14 @@ export class GinkgoTestController {
 
     execProcess(cmd: string, args: string[], opts: cp.SpawnOptions = {}): Promise<void> {
         return new Promise((resolve, reject) => {
-            const p = cp.spawn(cmd, args, opts);
+            // Merge environment variables from config with provided options
+            const envVars = this.getEnvironmentVariables();
+            const mergedOpts = {
+                ...opts,
+                env: { ...process.env, ...envVars, ...(opts.env || {}) }
+            };
+            
+            const p = cp.spawn(cmd, args, mergedOpts);
             p.stdout?.on('data', (c) => { });
             p.stderr?.on('data', (c) => { });
             p.on('error', (e) => reject(e));

@@ -61,6 +61,8 @@ export class GinkgoTestController {
     containerKeyToLeafKeys = new Map<string, Set<string>>();
     context: vscode.ExtensionContext;
     onDidDiscoverTests?: () => void;
+    runProfile: vscode.TestRunProfile;
+    debugProfile: vscode.TestRunProfile;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -79,8 +81,8 @@ export class GinkgoTestController {
             // }
         };
 
-        this.controller.createRunProfile('Run', vscode.TestRunProfileKind.Run, this.runHandler.bind(this));
-        this.controller.createRunProfile('Debug', vscode.TestRunProfileKind.Debug, this.runHandler.bind(this), true);
+        this.runProfile = this.controller.createRunProfile('Run', vscode.TestRunProfileKind.Run, this.runHandler.bind(this));
+        this.debugProfile = this.controller.createRunProfile('Debug', vscode.TestRunProfileKind.Debug, this.runHandler.bind(this), true);
 
         this.watcher = vscode.workspace.createFileSystemWatcher('**/*_test.go');
         this.watcher.onDidChange((uri) => this.onTestsChanged(uri));

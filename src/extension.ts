@@ -34,8 +34,13 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('ginkgo-test-adapter.runTest', async (testItem: vscode.TestItem) => {
 			if (testItem) {
-				const request = new vscode.TestRunRequest([testItem], [], controller.runProfile);
-				await controller.runHandler(request, new vscode.CancellationTokenSource().token);
+				const tokenSource = new vscode.CancellationTokenSource();
+				try {
+					const request = new vscode.TestRunRequest([testItem], [], controller.runProfile);
+					await controller.runHandler(request, tokenSource.token);
+				} finally {
+					tokenSource.dispose();
+				}
 			}
 		})
 	);
@@ -44,8 +49,13 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('ginkgo-test-adapter.debugTest', async (testItem: vscode.TestItem) => {
 			if (testItem) {
-				const request = new vscode.TestRunRequest([testItem], [], controller.debugProfile);
-				await controller.runHandler(request, new vscode.CancellationTokenSource().token);
+				const tokenSource = new vscode.CancellationTokenSource();
+				try {
+					const request = new vscode.TestRunRequest([testItem], [], controller.debugProfile);
+					await controller.runHandler(request, tokenSource.token);
+				} finally {
+					tokenSource.dispose();
+				}
 			}
 		})
 	);

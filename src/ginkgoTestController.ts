@@ -60,6 +60,7 @@ export class GinkgoTestController {
     leafKeyToTestItem = new Map<string, vscode.TestItem>();
     containerKeyToLeafKeys = new Map<string, Set<string>>();
     context: vscode.ExtensionContext;
+    onDidDiscoverTests?: () => void;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -108,6 +109,10 @@ export class GinkgoTestController {
         const workspaceFolders = vscode.workspace.workspaceFolders || [];
         for (const ws of workspaceFolders) {
             this.loadWorkspaceTests(ws);
+        }
+        // Notify that tests have been discovered
+        if (this.onDidDiscoverTests) {
+            this.onDidDiscoverTests();
         }
     }
 

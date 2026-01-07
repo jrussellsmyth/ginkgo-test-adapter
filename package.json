@@ -19,6 +19,14 @@
       {
         "command": "ginkgo-test-adapter.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "ginkgo-test-adapter.runTest",
+        "title": "Ginkgo: Run Test"
+      },
+      {
+        "command": "ginkgo-test-adapter.debugTest",
+        "title": "Ginkgo: Debug Test"
       }
     ]
   },

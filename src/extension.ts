@@ -2,6 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { GinkgoTestController } from './ginkgoTestController';
+import { GinkgoCodeLensProvider } from './ginkgoCodeLensProvider';
 
 /**
  * Activate the VS Code extension.
@@ -19,6 +20,50 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// start test controller
 	const controller = new GinkgoTestController(context);
+
+	// Create and register CodeLens provider
+	const codeLensProvider = new GinkgoCodeLensProvider(controller);
+	context.subscriptions.push(
+		vscode.languages.registerCodeLensProvider(
+			{ language: 'go', pattern: '**/*_test.go' },
+			codeLensProvider
+		)
+	);
+
+	// Register run test command
+	context.subscriptions.push(
+		vscode.commands.registerCommand('ginkgo-test-adapter.runTest', async (testItem: vscode.TestItem) => {
+			if (testItem) {
+				const tokenSource = new vscode.CancellationTokenSource();
+				try {
+					const request = new vscode.TestRunRequest([testItem], [], controller.runProfile);
+					await controller.runHandler(request, tokenSource.token);
+				} finally {
+					tokenSource.dispose();
+				}
+			}
+		})
+	);
+
+	// Register debug test command
+	context.subscriptions.push(
+		vscode.commands.registerCommand('ginkgo-test-adapter.debugTest', async (testItem: vscode.TestItem) => {
+			if (testItem) {
+				const tokenSource = new vscode.CancellationTokenSource();
+				try {
+					const request = new vscode.TestRunRequest([testItem], [], controller.debugProfile);
+					await controller.runHandler(request, tokenSource.token);
+				} finally {
+					tokenSource.dispose();
+				}
+			}
+		})
+	);
+
+	// Refresh code lenses when tests are discovered
+	controller.onDidDiscoverTests = () => {
+		codeLensProvider.refresh();
+	};
 
 	context.subscriptions.push(controller);
 }

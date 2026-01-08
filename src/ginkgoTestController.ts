@@ -60,6 +60,9 @@ export class GinkgoTestController {
     leafKeyToTestItem = new Map<string, vscode.TestItem>();
     containerKeyToLeafKeys = new Map<string, Set<string>>();
     context: vscode.ExtensionContext;
+    onDidDiscoverTests?: () => void;
+    runProfile: vscode.TestRunProfile;
+    debugProfile: vscode.TestRunProfile;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -78,8 +81,8 @@ export class GinkgoTestController {
             // }
         };
 
-        this.controller.createRunProfile('Run', vscode.TestRunProfileKind.Run, this.runHandler.bind(this));
-        this.controller.createRunProfile('Debug', vscode.TestRunProfileKind.Debug, this.runHandler.bind(this), true);
+        this.runProfile = this.controller.createRunProfile('Run', vscode.TestRunProfileKind.Run, this.runHandler.bind(this));
+        this.debugProfile = this.controller.createRunProfile('Debug', vscode.TestRunProfileKind.Debug, this.runHandler.bind(this), true);
 
         this.watcher = vscode.workspace.createFileSystemWatcher('**/*_test.go');
         this.watcher.onDidChange((uri) => this.onTestsChanged(uri));
@@ -108,6 +111,10 @@ export class GinkgoTestController {
         const workspaceFolders = vscode.workspace.workspaceFolders || [];
         for (const ws of workspaceFolders) {
             this.loadWorkspaceTests(ws);
+        }
+        // Notify that tests have been discovered
+        if (this.onDidDiscoverTests) {
+            this.onDidDiscoverTests();
         }
     }
 
@@ -304,10 +311,6 @@ export class GinkgoTestController {
 
         if (isDebug) {
             const dbgName = `Ginkgo Debug ${Date.now()}`;
-            const binaryBase = `ginkgo_test_bin_${Date.now()}_${process.pid}`;
-            const binaryName = process.platform === 'win32' ? `${binaryBase}.exe` : binaryBase;
-
-            // build the test binary in the workspace (go test -c -o <binary>)
             try {
                 
                 const debugConfig: any = {

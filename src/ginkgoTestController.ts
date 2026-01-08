@@ -95,18 +95,18 @@ export class GinkgoTestController {
 
     // Configuration helpers
     getGinkgoPath(): string {
-        const config = vscode.workspace.getConfiguration(constants.CONFIGURATION_SECTION);
-        return config.get<string>('ginkgoPath', constants.DEFAULT_GINKGO_PATH);
+        const config = vscode.workspace.getConfiguration(constants.configurationSection);
+        return config.get<string>('ginkgoPath', constants.defaultGinkgoPath);
     }
 
     getEnvironmentVariables(): Record<string, string> {
-        const config = vscode.workspace.getConfiguration(constants.CONFIGURATION_SECTION);
-        return config.get<Record<string, string>>('environmentVariables', constants.DEFAULT_ENVIRONMENT_VARIABLES);
+        const config = vscode.workspace.getConfiguration(constants.configurationSection);
+        return config.get<Record<string, string>>('environmentVariables', constants.defaultEnvironmentVariables);
     }
 
     getBuildTags(): string[] {
-        const config = vscode.workspace.getConfiguration(constants.CONFIGURATION_SECTION);
-        return config.get<string[]>('buildTags', constants.DEFAULT_BUILD_TAGS);
+        const config = vscode.workspace.getConfiguration(constants.configurationSection);
+        return config.get<string[]>('buildTags', constants.defaultBuildTags);
     }
 
     dispose(): any {

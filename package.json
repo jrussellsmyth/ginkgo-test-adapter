@@ -28,7 +28,30 @@
         "command": "ginkgo-test-adapter.debugTest",
         "title": "Ginkgo: Debug Test"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Ginkgo Test Adapter",
+      "properties": {
+        "ginkgoTestAdapter.ginkgoPath": {
+          "type": "string",
+          "default": "ginkgo",
+          "description": "Path to the ginkgo executable"
+        },
+        "ginkgoTestAdapter.environmentVariables": {
+          "type": "object",
+          "default": {},
+          "description": "Environment variables to be set when running/debugging tests via the extension"
+        },
+        "ginkgoTestAdapter.buildTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Build tags to be set when running/debugging tests via the extension"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

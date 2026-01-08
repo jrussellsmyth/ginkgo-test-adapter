@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { DEFAULT_GINKGO_PATH, DEFAULT_ENVIRONMENT_VARIABLES, DEFAULT_BUILD_TAGS } from './constants';
+import { constants } from './constants';
 
 // should match the struct returned by helpers/discover_suites.go
 // type SuiteEntry = { 
@@ -95,18 +95,18 @@ export class GinkgoTestController {
 
     // Configuration helpers
     getGinkgoPath(): string {
-        const config = vscode.workspace.getConfiguration('ginkgoTestAdapter');
-        return config.get<string>('ginkgoPath', DEFAULT_GINKGO_PATH);
+        const config = vscode.workspace.getConfiguration(constants.CONFIGURATION_SECTION);
+        return config.get<string>('ginkgoPath', constants.DEFAULT_GINKGO_PATH);
     }
 
     getEnvironmentVariables(): Record<string, string> {
-        const config = vscode.workspace.getConfiguration('ginkgoTestAdapter');
-        return config.get<Record<string, string>>('environmentVariables', DEFAULT_ENVIRONMENT_VARIABLES);
+        const config = vscode.workspace.getConfiguration(constants.CONFIGURATION_SECTION);
+        return config.get<Record<string, string>>('environmentVariables', constants.DEFAULT_ENVIRONMENT_VARIABLES);
     }
 
     getBuildTags(): string[] {
-        const config = vscode.workspace.getConfiguration('ginkgoTestAdapter');
-        return config.get<string[]>('buildTags', DEFAULT_BUILD_TAGS);
+        const config = vscode.workspace.getConfiguration(constants.CONFIGURATION_SECTION);
+        return config.get<string[]>('buildTags', constants.DEFAULT_BUILD_TAGS);
     }
 
     dispose(): any {

@@ -311,10 +311,6 @@ export class GinkgoTestController {
 
         if (isDebug) {
             const dbgName = `Ginkgo Debug ${Date.now()}`;
-            const binaryBase = `ginkgo_test_bin_${Date.now()}_${process.pid}`;
-            const binaryName = process.platform === 'win32' ? `${binaryBase}.exe` : binaryBase;
-
-            // build the test binary in the workspace (go test -c -o <binary>)
             try {
                 
                 const debugConfig: any = {

@@ -148,7 +148,7 @@ export class GinkgoTestController {
         
         // Add build tags if configured
         const buildTags = this.getBuildTags();
-        if (buildTags.length > 0) {
+        if (buildTags && buildTags.length > 0) {
             args.push(`--tags=${buildTags.join(',')}`);
         }
         

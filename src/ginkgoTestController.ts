@@ -148,7 +148,7 @@ export class GinkgoTestController {
         
         // Add build tags if configured
         const buildTags = this.getBuildTags();
-        if (buildTags && buildTags.length > 0) {
+        if (buildTags.length > 0) {
             args.push(`--tags=${buildTags.join(',')}`);
         }
         
@@ -333,11 +333,8 @@ export class GinkgoTestController {
             args = [ `${argPrefix}json-report=${outJson}`, '-r'];
         }
 
-        // Get build tags
+        // Get build tags for later use
         const buildTags = this.getBuildTags();
-        if (buildTags.length > 0) {
-            args.push(`--tags=${buildTags.join(',')}`);
-        }
 
         if (isDebug) {
             const dbgName = `Ginkgo Debug ${Date.now()}`;
@@ -345,6 +342,7 @@ export class GinkgoTestController {
                 
                 // Get environment variables and merge with current env
                 const envVars = this.getEnvironmentVariables();
+                const env = { ...process.env, ...envVars };
                 
                 const debugConfig: any = {
                     name: dbgName,
@@ -354,7 +352,7 @@ export class GinkgoTestController {
                     program: meta.file,
                     args: args,
                     cwd: cwd || undefined,
-                    env: envVars,
+                    env: env,
                 };
                 
                 // Add build tags to debug config if specified
@@ -377,6 +375,12 @@ export class GinkgoTestController {
            
                
             args = ['run', ...args];
+            
+            // Add build tags for non-debug mode
+            if (buildTags.length > 0) {
+                args.push(`--tags=${buildTags.join(',')}`);
+            }
+            
             const ginkgoPath = this.getGinkgoPath();
             run.appendOutput(`${ginkgoPath} ${args.join(' ')}\r\n\r\n`);
             

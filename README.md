@@ -30,7 +30,26 @@ Code Lens actions are available for:
 
 ## Extension Settings
 
-This extension does not currently contribute any VS Code settings.
+This extension contributes the following settings:
+
+* `ginkgoTestAdapter.ginkgoPath`: Path to the ginkgo executable. Default: `"ginkgo"`
+* `ginkgoTestAdapter.environmentVariables`: Environment variables to be set when running/debugging tests via the extension. Default: `{}`
+* `ginkgoTestAdapter.buildTags`: Build tags to be set when running/debugging tests via the extension. Default: `[]`
+
+### Configuration Examples
+
+To configure these settings, open your VS Code settings (File > Preferences > Settings) and search for "Ginkgo Test Adapter", or edit your `settings.json` file directly:
+
+```json
+{
+  "ginkgoTestAdapter.ginkgoPath": "/usr/local/bin/ginkgo",
+  "ginkgoTestAdapter.environmentVariables": {
+    "CGO_ENABLED": "0",
+    "GOOS": "linux"
+  },
+  "ginkgoTestAdapter.buildTags": ["integration", "e2e"]
+}
+```
 
 ## Known Issues
 

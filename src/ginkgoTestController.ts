@@ -124,11 +124,32 @@ export class GinkgoTestController {
 
     // discover suites in all workspace folders
     async discoverWorkspace() {
-        this.controller.items.forEach((i) => this.controller.items.delete(i.id));
+        // Instead of clearing all items first, we'll track which suites we've seen
+        // and only remove ones that no longer exist after discovery
+        const seenSuiteIds = new Set<string>();
         const workspaceFolders = vscode.workspace.workspaceFolders || [];
+        
+        // Mark all existing suites as busy during discovery
+        this.controller.items.forEach((i) => {
+            i.busy = true;
+        });
+        
         for (const ws of workspaceFolders) {
-            this.loadWorkspaceTests(ws);
+            const discoveredIds = await this.loadWorkspaceTests(ws);
+            discoveredIds.forEach(id => seenSuiteIds.add(id));
         }
+        
+        // Remove suites that were not discovered
+        const toDelete: string[] = [];
+        this.controller.items.forEach((i) => {
+            if (!seenSuiteIds.has(i.id)) {
+                toDelete.push(i.id);
+            } else {
+                i.busy = false;
+            }
+        });
+        toDelete.forEach(id => this.controller.items.delete(id));
+        
         // Notify that tests have been discovered
         if (this.onDidDiscoverTests) {
             this.onDidDiscoverTests();
@@ -140,7 +161,8 @@ export class GinkgoTestController {
     }
 
     // run ginkgo dry-run from the entrypoint to build the suite tree
-    async loadWorkspaceTests(ws: vscode.WorkspaceFolder) {
+    async loadWorkspaceTests(ws: vscode.WorkspaceFolder): Promise<string[]> {
+        const discoveredSuiteIds: string[] = [];
 
         const cwd = ws.uri.fsPath;
         const outJson = path.join(cwd, `ginkgo_discovery.json`);
@@ -164,14 +186,18 @@ export class GinkgoTestController {
                 const suiteReports = JSON.parse(raw) as SuiteJson[];
                 for (const suiteReport of suiteReports) 
                 {
-                    this.buildSuite(ws, suiteReport);
+                    const suiteId = this.buildSuite(ws, suiteReport);
+                    if (suiteId) {
+                        discoveredSuiteIds.push(suiteId);
+                    }
                 }
             } catch (e) {}
             try { fs.unlinkSync(outJson); } catch {}
         }
+        return discoveredSuiteIds;
     }
     // best-effort parser: look for spec reports and their container hierarchies
-    buildSuite(ws: vscode.WorkspaceFolder, report: SuiteJson) {
+    buildSuite(ws: vscode.WorkspaceFolder, report: SuiteJson): string | undefined {
 
         // create top-level suite item
         const suiteFilePath = path.isAbsolute(report.SuitePath) ? report.SuitePath : path.join(ws.uri.fsPath, report.SuitePath);
@@ -186,9 +212,10 @@ export class GinkgoTestController {
             this.itemMeta.set(suiteTestItem, { type: 'suite', suiteKey, suitePath: suiteFilePath, itemLabel: suiteLabel, descendantLeafKeys: new Set<string>() } as FullTestItemMeta);
         }
         suiteTestItem.busy = true;
-        suiteTestItem.children.forEach((c) => suiteTestItem.children.delete(c.id));
-
-        const rootMap = new Map<string, vscode.TestItem>();
+        
+        // Build new tree in memory first, then reconcile with existing children
+        const newRootMap = new Map<string, vscode.TestItem>();
+        const seenChildIds = new Set<string>();
 
         for (const spec of report.SpecReports) {
             const containerHierarchy: string[] = spec.ContainerHierarchyTexts || [];
@@ -204,28 +231,48 @@ export class GinkgoTestController {
                 const line = location.LineNumber || 1;
 
                 const containerId = parent.id + '::' + name;
-                let node = rootMap.get(containerId);
+                seenChildIds.add(containerId);
+                let node = newRootMap.get(containerId);
                 containerPath.push(name);
                 if (!node) {
-                    node = this.controller.createTestItem(containerId, name, vscode.Uri.file(file));
-                    node.range = new vscode.Range(new vscode.Position((line as number) - 1, 0), new vscode.Position((line as number) - 1, 0));
-                    const containerKey = this.makeContainerKey(suiteKey, containerPath);
-                    this.itemMeta.set(node, { type: 'container', itemLabel: name, suiteKey, suitePath: suiteFilePath, containerPath: [...containerPath], file, line, containerKey, descendantLeafKeys: new Set<string>() } as FullTestItemMeta);
-                    if (!this.containerKeyToLeafKeys.has(containerKey)) {this.containerKeyToLeafKeys.set(containerKey, new Set<string>());}
-                    parent.children.add(node);
-                    rootMap.set(containerId, node);
+                    // Check if node already exists in the current tree
+                    node = parent.children.get(containerId);
+                    if (!node) {
+                        // Create new node
+                        node = this.controller.createTestItem(containerId, name, vscode.Uri.file(file));
+                        node.range = new vscode.Range(new vscode.Position((line as number) - 1, 0), new vscode.Position((line as number) - 1, 0));
+                        const containerKey = this.makeContainerKey(suiteKey, containerPath);
+                        this.itemMeta.set(node, { type: 'container', itemLabel: name, suiteKey, suitePath: suiteFilePath, containerPath: [...containerPath], file, line, containerKey, descendantLeafKeys: new Set<string>() } as FullTestItemMeta);
+                        if (!this.containerKeyToLeafKeys.has(containerKey)) {this.containerKeyToLeafKeys.set(containerKey, new Set<string>());}
+                        parent.children.add(node);
+                    } else {
+                        // Update existing node metadata
+                        const containerKey = this.makeContainerKey(suiteKey, containerPath);
+                        this.itemMeta.set(node, { type: 'container', itemLabel: name, suiteKey, suitePath: suiteFilePath, containerPath: [...containerPath], file, line, containerKey, descendantLeafKeys: new Set<string>() } as FullTestItemMeta);
+                        if (!this.containerKeyToLeafKeys.has(containerKey)) {this.containerKeyToLeafKeys.set(containerKey, new Set<string>());}
+                    }
+                    newRootMap.set(containerId, node);
                 }
                 parent = node;
             }
 
             // create the leaf spec
             const specId = parent.id + '::' + leaf;
+            seenChildIds.add(specId);
             const specLocation = spec.LeafNodeLocation || {};
             const specFile = specLocation.FileName || suiteFilePath;
             const specLine = specLocation.LineNumber || 1;
-            const testItem = this.controller.createTestItem(specId, leaf, vscode.Uri.file(specFile));
-            testItem.range = new vscode.Range(new vscode.Position((specLine as number) - 1, 0), new vscode.Position((specLine as number) - 1, 0));
-            parent.children.add(testItem);
+            
+            let testItem = parent.children.get(specId);
+            if (!testItem) {
+                // Create new test item
+                testItem = this.controller.createTestItem(specId, leaf, vscode.Uri.file(specFile));
+                testItem.range = new vscode.Range(new vscode.Position((specLine as number) - 1, 0), new vscode.Position((specLine as number) - 1, 0));
+                parent.children.add(testItem);
+            } else {
+                // Update existing test item's range if needed
+                testItem.range = new vscode.Range(new vscode.Position((specLine as number) - 1, 0), new vscode.Position((specLine as number) - 1, 0));
+            }
 
             // compute keys and store meta
             const leafKey = this.makeLeafKey(specFile, specLine, suiteKey, containerPath, leaf);
@@ -251,9 +298,30 @@ export class GinkgoTestController {
                 ancestor = parentId ? this.findTestItemByIdPrefix(parentId) : undefined;
             }
         }
+        
+        // Remove children that no longer exist (recursively)
+        this.removeStaleChildren(suiteTestItem, seenChildIds);
+        
         suiteTestItem.busy = false;
+        return suiteId;
     }
 
+
+    // helper to recursively remove stale children not seen in current discovery
+    // Note: seenIds contains IDs for all levels of the hierarchy, so we can use it
+    // to check at each level whether a child should be kept or removed
+    private removeStaleChildren(parent: vscode.TestItem, seenIds: Set<string>) {
+        const toDelete: string[] = [];
+        parent.children.forEach((child) => {
+            if (!seenIds.has(child.id)) {
+                toDelete.push(child.id);
+            } else {
+                // Recursively check children's descendants
+                this.removeStaleChildren(child, seenIds);
+            }
+        });
+        toDelete.forEach(id => parent.children.delete(id));
+    }
 
     // helper to find test item by id prefix (exact or child)
     findTestItemByIdPrefix(prefix: string): vscode.TestItem | undefined {

@@ -3,6 +3,10 @@
   "displayName": "Ginkgo Test Adapter",
   "description": "Add Ginkgo tests to the test explorer",
   "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jrussellsmyth/ginkgo-test-adapter"
+  },
   "engines": {
     "vscode": "^1.107.0"
   },

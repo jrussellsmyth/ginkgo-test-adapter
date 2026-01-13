@@ -31,6 +31,8 @@ jobs:
     - name: Install vsce
       run: npm install -g @vscode/vsce
       
+    # Using --skip-license because the repository doesn't have a LICENSE file yet
+    # Consider adding a LICENSE file for better transparency
     - name: Package extension
       run: vsce package --skip-license
       

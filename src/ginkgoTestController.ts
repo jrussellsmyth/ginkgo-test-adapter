@@ -308,13 +308,15 @@ export class GinkgoTestController {
 
 
     // helper to recursively remove stale children not seen in current discovery
+    // Note: seenIds contains IDs for all levels of the hierarchy, so we can use it
+    // to check at each level whether a child should be kept or removed
     private removeStaleChildren(parent: vscode.TestItem, seenIds: Set<string>) {
         const toDelete: string[] = [];
         parent.children.forEach((child) => {
             if (!seenIds.has(child.id)) {
                 toDelete.push(child.id);
             } else {
-                // Recursively check children
+                // Recursively check children's descendants
                 this.removeStaleChildren(child, seenIds);
             }
         });

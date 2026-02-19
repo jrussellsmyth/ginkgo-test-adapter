@@ -43,6 +43,8 @@ jobs:
         VERSION=$(node -p "require('./package.json').version")
         VSIX_FILE="${NAME}-${VERSION}.vsix"
         echo "vsix_file=$VSIX_FILE" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "tag=v$VERSION" >> $GITHUB_OUTPUT
     
     - name: Upload VSIX artifact
       uses: actions/upload-artifact@v4
@@ -51,20 +53,14 @@ jobs:
         path: ${{ steps.package_step.outputs.vsix_file }}
         retention-days: 90
     
-    - name: Extract version from package.json
-      if: github.event_name == 'workflow_dispatch'
-      id: package_version
-      run: |
-        VERSION=$(node -p "require('./package.json').version")
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "tag=v$VERSION" >> $GITHUB_OUTPUT
-    
+    # Create a draft release when manually triggered via workflow_dispatch
+    # If a release with the same tag already exists, the workflow will fail
     - name: Create draft release
       uses: softprops/action-gh-release@v1
       if: github.event_name == 'workflow_dispatch'
       with:
-        tag_name: ${{ steps.package_version.outputs.tag }}
-        name: Release ${{ steps.package_version.outputs.tag }}
+        tag_name: ${{ steps.package_step.outputs.tag }}
+        name: Release ${{ steps.package_step.outputs.tag }}
         draft: true
         generate_release_notes: true
         files: ${{ steps.package_step.outputs.vsix_file }}

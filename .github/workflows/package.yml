@@ -39,7 +39,9 @@ jobs:
       id: package_step
       run: |
         vsce package --skip-license
-        VSIX_FILE=$(ls *.vsix)
+        NAME=$(node -p "require('./package.json').name")
+        VERSION=$(node -p "require('./package.json').version")
+        VSIX_FILE="${NAME}-${VERSION}.vsix"
         echo "vsix_file=$VSIX_FILE" >> $GITHUB_OUTPUT
     
     - name: Upload VSIX artifact
@@ -57,7 +59,7 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "tag=v$VERSION" >> $GITHUB_OUTPUT
     
-    - name: Create or update release
+    - name: Create draft release
       uses: softprops/action-gh-release@v1
       if: github.event_name == 'workflow_dispatch'
       with:

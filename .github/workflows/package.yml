@@ -54,9 +54,9 @@ jobs:
         retention-days: 90
     
     # Create a draft release when manually triggered via workflow_dispatch
-    # If a release with the same tag already exists, the workflow will fail
+    # The action will create a new release with the specified tag
     - name: Create draft release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       if: github.event_name == 'workflow_dispatch'
       with:
         tag_name: ${{ steps.package_step.outputs.tag }}

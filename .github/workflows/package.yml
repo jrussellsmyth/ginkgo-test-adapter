@@ -36,13 +36,17 @@ jobs:
     # Using --skip-license because the repository doesn't have a LICENSE file yet
     # Consider adding a LICENSE file for better transparency
     - name: Package extension
-      run: vsce package --skip-license
-      
+      id: package_step
+      run: |
+        vsce package --skip-license
+        VSIX_FILE=$(ls *.vsix)
+        echo "vsix_file=$VSIX_FILE" >> $GITHUB_OUTPUT
+    
     - name: Upload VSIX artifact
       uses: actions/upload-artifact@v4
       with:
         name: ginkgo-test-adapter-vsix
-        path: '*.vsix'
+        path: ${{ steps.package_step.outputs.vsix_file }}
         retention-days: 90
     
     - name: Extract version from package.json
@@ -61,4 +65,4 @@ jobs:
         name: Release ${{ steps.package_version.outputs.tag }}
         draft: true
         generate_release_notes: true
-        files: '*.vsix'
+        files: ${{ steps.package_step.outputs.vsix_file }}

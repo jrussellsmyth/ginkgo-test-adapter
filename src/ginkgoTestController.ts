@@ -435,6 +435,20 @@ export class GinkgoTestController {
                     run.appendOutput('Debug session failed to start\r\n');
                     return;
                 }
+
+                // Wait for the debug session to terminate before parsing results
+                await new Promise<void>((resolve) => {
+                    const sub = vscode.debug.onDidTerminateDebugSession((session) => {
+                        if (session.name === dbgName) {
+                            sub.dispose();
+                            resolve();
+                        }
+                    });
+                    token.onCancellationRequested(() => {
+                        sub.dispose();
+                        resolve();
+                    });
+                });
             } catch (e) {
                 run.appendOutput('Build or debug failed: ' + String(e) + '\r\n');
                 return;

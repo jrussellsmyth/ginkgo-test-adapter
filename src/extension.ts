@@ -17,6 +17,7 @@ import { GinkgoCodeLensProvider } from './ginkgoCodeLensProvider';
  */
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Ginkgo Test Adapter active');
+	try {
 
 	// start test controller
 	const controller = new GinkgoTestController(context);
@@ -66,6 +67,11 @@ export function activate(context: vscode.ExtensionContext) {
 	};
 
 	context.subscriptions.push(controller);
+	} catch (e) {
+		vscode.window.showErrorMessage(`Ginkgo Test Adapter failed to activate: ${String(e)}`);
+		console.error('Ginkgo Test Adapter activation error:', e);
+		throw e;
+	}
 }
 
 export function deactivate() {}

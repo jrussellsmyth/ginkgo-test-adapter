@@ -1,6 +1,7 @@
 {
   "name": "ginkgo-test-adapter",
   "displayName": "Ginkgo Test Adapter",
+  "publisher": "jrussellsmyth",
   "description": "Add Ginkgo tests to the test explorer",
   "version": "0.0.1",
   "repository": {
@@ -8,7 +9,7 @@
     "url": "https://github.com/jrussellsmyth/ginkgo-test-adapter"
   },
   "engines": {
-    "vscode": "^1.107.0"
+    "vscode": "^1.109.0"
   },
   "categories": [
     "Other"

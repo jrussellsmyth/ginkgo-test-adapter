@@ -487,6 +487,7 @@ export class GinkgoTestController {
                     token.onCancellationRequested(() => {
                         sub.dispose();
                         resolve();
+                        vscode.debug.stopDebugging();
                     });
                 });
             } catch (e) {

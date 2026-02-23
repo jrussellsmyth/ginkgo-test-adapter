@@ -497,11 +497,9 @@ export class GinkgoTestController {
                 args.push(`--tags=${buildTags.join(',')}`);
             }
 
-            const ginkgoPath = this.getGinkgoPath();
             this.appendOutput(run, `${ginkgoPath} ${args.join(' ')}\r\n\r\n`);
 
             // Get environment variables and merge with current env
-            const envVars = this.getEnvironmentVariables();
             const env = { ...process.env, ...envVars };
 
             const proc = cp.spawn(ginkgoPath, args, { cwd: cwd || undefined, env });

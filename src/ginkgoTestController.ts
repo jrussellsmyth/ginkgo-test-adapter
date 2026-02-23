@@ -471,15 +471,26 @@ export class GinkgoTestController {
 
                 // Wait for the debug session to terminate before parsing results
                 await new Promise<void>((resolve) => {
+                    let completed = false;
+
+                    const finish = () => {
+                        if (completed) {
+                            return;
+                        }
+                        completed = true;
+                        sub.dispose();
+                        cancelSub.dispose();
+                        resolve();
+                    };
+
                     const sub = vscode.debug.onDidTerminateDebugSession((session) => {
                         if (session.name === dbgName) {
-                            sub.dispose();
-                            resolve();
+                            finish();
                         }
                     });
-                    token.onCancellationRequested(() => {
-                        sub.dispose();
-                        resolve();
+
+                    const cancelSub = token.onCancellationRequested(() => {
+                        finish();
                         vscode.debug.stopDebugging();
                     });
                 });

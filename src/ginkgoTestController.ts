@@ -48,6 +48,7 @@ type FullTestItemMeta = {
 export class GinkgoTestController {
     controller: vscode.TestController;
     watcher: vscode.FileSystemWatcher;
+    outputChannel: vscode.OutputChannel;
     itemMeta = new WeakMap<vscode.TestItem, FullTestItemMeta | undefined>();
     // reverse lookup maps
     leafKeyToTestItem = new Map<string, vscode.TestItem>();
@@ -63,6 +64,7 @@ export class GinkgoTestController {
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
+        this.outputChannel = vscode.window.createOutputChannel('Ginkgo');
         this.controller = vscode.tests.createTestController('ginkgo', 'Ginkgo');
 
         this.controller.resolveHandler = async (item) => {
@@ -112,6 +114,7 @@ export class GinkgoTestController {
         }
         try { this.watcher.dispose(); } catch { }
         try { this.controller.dispose(); } catch { }
+        try { this.outputChannel.dispose(); } catch { }
     }
 
     onTestsChanged(_uri: vscode.Uri) {
@@ -604,8 +607,8 @@ export class GinkgoTestController {
             };
 
             const p = cp.spawn(cmd, args, mergedOpts);
-            p.stdout?.on('data', (c) => { });
-            p.stderr?.on('data', (c) => { });
+            p.stdout?.on('data', (c) => { this.outputChannel.append(String(c)); });
+            p.stderr?.on('data', (c) => { this.outputChannel.append(String(c)); });
             p.on('error', (e) => reject(e));
             p.on('close', (code) => {
                 if (code === 0) {

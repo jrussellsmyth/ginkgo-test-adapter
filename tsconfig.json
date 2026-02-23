@@ -1,12 +1,12 @@
 {
 	"compilerOptions": {
-		"module": "esnext",
-		"target": "ESNext",
+		"module": "Node16",
+		"target": "ES2022",
 		"outDir": "out",
 		"lib": [
-			"ESNext",
+			"ES2022"
 		],
-		"moduleResolution": "bundler",
+		"moduleResolution": "Node16",
 		"types": ["node", "vscode", "mocha"],
 		"skipLibCheck": true,
 		"sourceMap": true,

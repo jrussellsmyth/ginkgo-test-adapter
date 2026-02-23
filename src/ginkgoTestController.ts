@@ -48,7 +48,7 @@ type FullTestItemMeta = {
 export class GinkgoTestController {
     controller: vscode.TestController;
     watcher: vscode.FileSystemWatcher;
-    itemMeta = new WeakMap<vscode.TestItem, FullTestItemMeta | any>();
+    itemMeta = new WeakMap<vscode.TestItem, FullTestItemMeta | undefined>();
     // reverse lookup maps
     leafKeyToTestItem = new Map<string, vscode.TestItem>();
     containerKeyToLeafKeys = new Map<string, Set<string>>();
@@ -407,7 +407,7 @@ export class GinkgoTestController {
     async executeTestItem(item: vscode.TestItem, run: vscode.TestRun, token: vscode.CancellationToken, isDebug?: boolean) {
         run.started(item);
 
-        const meta = this.itemMeta.get(item) as FullTestItemMeta | any;
+        const meta = this.itemMeta.get(item) as FullTestItemMeta | undefined;
 
         const wf = item.uri ? vscode.workspace.getWorkspaceFolder(item.uri) : undefined;
         const cwd = meta?.file ? path.dirname(meta.file) : (wf?.uri.fsPath || meta?.suitePath || process.cwd());

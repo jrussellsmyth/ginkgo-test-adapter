@@ -19,17 +19,6 @@ type SpecReport = {
     State?: string;
     Failure?: { Message: string };
 };
-type TestItemMeta = {
-    isSuite?: boolean;
-    isContainer?: boolean;
-    focus?: string;
-    workspaceFolder: vscode.WorkspaceFolder;
-    file: string;
-    line: number;
-    column?: number;
-    suite: string;
-    spec?: any;
-};
 
 type FullTestItemMeta = {
     type: 'suite' | 'container' | 'leaf';

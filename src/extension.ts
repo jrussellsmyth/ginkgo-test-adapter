@@ -8,15 +8,16 @@ import { GinkgoCodeLensProvider } from './ginkgoCodeLensProvider';
  * Activate the VS Code extension.
  *
  * Logs activation to the console, instantiates the Ginkgo test controller (passing the
- * provided extension context), and registers an example "ginkgo-test-adapter.helloWorld"
- * command that shows an information message. The command's disposable is added to
- * context.subscriptions so it will be cleaned up when the extension is deactivated.
+ * provided extension context), and registers runTest and debugTest commands.
+ * The command's disposable is added to context.subscriptions so it will be cleaned up 
+ * when the extension is deactivated.
  *
  * @param context - The extension context provided by VS Code, used to register disposables
  *                  and persist extension state across activation sessions.
  */
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Ginkgo Test Adapter active');
+	try {
 
 	// start test controller
 	const controller = new GinkgoTestController(context);
@@ -66,6 +67,11 @@ export function activate(context: vscode.ExtensionContext) {
 	};
 
 	context.subscriptions.push(controller);
+	} catch (e) {
+		vscode.window.showErrorMessage(`Ginkgo Test Adapter failed to activate: ${String(e)}`);
+		console.error('Ginkgo Test Adapter activation error:', e);
+		throw e;
+	}
 }
 
 export function deactivate() {}

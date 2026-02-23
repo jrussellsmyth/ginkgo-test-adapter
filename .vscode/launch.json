@@ -10,7 +10,9 @@
 			"type": "extensionHost",
 			"request": "launch",
 			"args": [
-				"--extensionDevelopmentPath=${workspaceFolder}"
+				"--extensionDevelopmentPath=${workspaceFolder}",
+				"--install-extension",
+				"golang.go"
 			],
 			"outFiles": [
 				"${workspaceFolder}/out/**/*.js"

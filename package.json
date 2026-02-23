@@ -1,6 +1,7 @@
 {
   "name": "ginkgo-test-adapter",
   "displayName": "Ginkgo Test Adapter",
+  "publisher": "jrussellsmyth",
   "description": "Add Ginkgo tests to the test explorer",
   "version": "0.0.1",
   "repository": {
@@ -8,10 +9,13 @@
     "url": "https://github.com/jrussellsmyth/ginkgo-test-adapter"
   },
   "engines": {
-    "vscode": "^1.107.0"
+    "vscode": "^1.109.0"
   },
   "categories": [
-    "Other"
+    "Testing"
+  ],
+  "extensionDependencies": [
+    "golang.go"
   ],
   "activationEvents": [
     "onLanguage:go",
@@ -20,10 +24,6 @@
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-      {
-        "command": "ginkgo-test-adapter.helloWorld",
-        "title": "Hello World"
-      },
       {
         "command": "ginkgo-test-adapter.runTest",
         "title": "Ginkgo: Run Test"
@@ -60,7 +60,6 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "build-dist": "bash ./scripts/build-dist.sh",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
@@ -68,9 +67,9 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
+    "@types/node": "^22.19.11",
+    "@types/vscode": "^1.109.0",
     "@vscode/test-cli": "^0.0.12",
-    "@types/vscode": "^1.107.0",
     "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.39.1",
     "typescript": "^5.9.3",

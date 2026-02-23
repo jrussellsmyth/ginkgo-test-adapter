@@ -1,45 +1,27 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { constants } from './constants';
 
-// should match the struct returned by helpers/discover_suites.go
-// type SuiteEntry = { 
-//     file: string; 
-//     line: number; 
-//     column?: number; 
-//     suite: string; 
-//     entrypoint: string 
-// };
 
 type SuiteJson = {
-        SuitePath: string;
-        SuiteDescription: string;
-        SpecReports: SpecReport[];
-    };
+    SuitePath: string;
+    SuiteDescription: string;
+    SpecReports: SpecReport[];
+};
 type SpecReport = {
-        ContainerHierarchyTexts?: string[]; 
-        ContainerHierarchyLocations?: any[];
-        LeafNodeText?: string;
-        LeafNodeLocation?: any;
-        State?: string;
-        Failure?: { Message: string };
-    };
-type TestItemMeta = {
-    isSuite?: boolean;
-    isContainer?: boolean;
-    focus?: string;
-    workspaceFolder: vscode.WorkspaceFolder;
-    file: string;
-    line: number;
-    column?: number;
-    suite: string;
-    spec?: any;
+    ContainerHierarchyTexts?: string[];
+    ContainerHierarchyLocations?: any[];
+    LeafNodeText?: string;
+    LeafNodeLocation?: any;
+    State?: string;
+    Failure?: { Message: string };
 };
 
 type FullTestItemMeta = {
-    type: 'suite'|'container'|'leaf';
+    type: 'suite' | 'container' | 'leaf';
     suiteKey: string;
     suitePath: string;
     itemLabel?: string;
@@ -56,7 +38,8 @@ type FullTestItemMeta = {
 export class GinkgoTestController {
     controller: vscode.TestController;
     watcher: vscode.FileSystemWatcher;
-    itemMeta = new WeakMap<vscode.TestItem, FullTestItemMeta | any>();
+    outputChannel: vscode.OutputChannel;
+    itemMeta = new WeakMap<vscode.TestItem, FullTestItemMeta | undefined>();
     // reverse lookup maps
     leafKeyToTestItem = new Map<string, vscode.TestItem>();
     containerKeyToLeafKeys = new Map<string, Set<string>>();
@@ -64,9 +47,14 @@ export class GinkgoTestController {
     onDidDiscoverTests?: () => void;
     runProfile: vscode.TestRunProfile;
     debugProfile: vscode.TestRunProfile;
+    // debounce / single-flight state for file-change triggered discovery
+    private _changeDebounceTimer: ReturnType<typeof setTimeout> | undefined = undefined;
+    private _discoveryInProgress = false;
+    private _discoveryPending = false;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
+        this.outputChannel = vscode.window.createOutputChannel('Ginkgo Test Adapter');
         this.controller = vscode.tests.createTestController('ginkgo', 'Ginkgo');
 
         this.controller.resolveHandler = async (item) => {
@@ -110,15 +98,49 @@ export class GinkgoTestController {
     }
 
     dispose(): any {
+        if (this._changeDebounceTimer !== undefined) {
+            clearTimeout(this._changeDebounceTimer);
+            this._changeDebounceTimer = undefined;
+        }
         try { this.watcher.dispose(); } catch { }
         try { this.controller.dispose(); } catch { }
+        try { this.outputChannel.dispose(); } catch { }
     }
 
-    async onTestsChanged(uri: vscode.Uri) {
-        // simple approach: clear root and re-discover
-        // future may use url to find and update specific items
-        if (this.controller?.resolveHandler) {
-            await this.controller.resolveHandler(undefined);
+    onTestsChanged(_uri: vscode.Uri) {
+        // Debounce: reset the timer on every event so that a burst of rapid saves
+        // (auto-save, formatters, etc.) collapses into a single discovery run.
+        if (this._changeDebounceTimer !== undefined) {
+            clearTimeout(this._changeDebounceTimer);
+        }
+        this._changeDebounceTimer = setTimeout(() => {
+            this._changeDebounceTimer = undefined;
+            this._scheduleDiscovery();
+        }, 500);
+    }
+
+    private _scheduleDiscovery() {
+        if (this._discoveryInProgress) {
+            // A run is already in flight — record that another pass is needed once
+            // it finishes so we never drop a change that arrived mid-run.
+            this._discoveryPending = true;
+            return;
+        }
+        this._runDiscovery();
+    }
+
+    private async _runDiscovery() {
+        this._discoveryInProgress = true;
+        this._discoveryPending = false;
+        try {
+            await this.discoverWorkspace();
+        } finally {
+            this._discoveryInProgress = false;
+            // If a change arrived while we were running, do one more pass.
+            if (this._discoveryPending) {
+                this._discoveryPending = false;
+                await this._runDiscovery();
+            }
         }
     }
 
@@ -128,17 +150,25 @@ export class GinkgoTestController {
         // and only remove ones that no longer exist after discovery
         const seenSuiteIds = new Set<string>();
         const workspaceFolders = vscode.workspace.workspaceFolders || [];
-        
+
         // Mark all existing suites as busy during discovery
         this.controller.items.forEach((i) => {
             i.busy = true;
         });
-        
+
+        // Build fresh lookup maps so stale entries are never retained across discoveries
+        const tempLeafKeyToTestItem = new Map<string, vscode.TestItem>();
+        const tempContainerKeyToLeafKeys = new Map<string, Set<string>>();
+
         for (const ws of workspaceFolders) {
-            const discoveredIds = await this.loadWorkspaceTests(ws);
+            const discoveredIds = await this.loadWorkspaceTests(ws, tempLeafKeyToTestItem, tempContainerKeyToLeafKeys);
             discoveredIds.forEach(id => seenSuiteIds.add(id));
         }
-        
+
+        // Atomically replace the member lookup maps with the freshly built ones
+        this.leafKeyToTestItem = tempLeafKeyToTestItem;
+        this.containerKeyToLeafKeys = tempContainerKeyToLeafKeys;
+
         // Remove suites that were not discovered
         const toDelete: string[] = [];
         this.controller.items.forEach((i) => {
@@ -149,31 +179,27 @@ export class GinkgoTestController {
             }
         });
         toDelete.forEach(id => this.controller.items.delete(id));
-        
+
         // Notify that tests have been discovered
         if (this.onDidDiscoverTests) {
             this.onDidDiscoverTests();
         }
     }
 
-    async discoverFile(item: vscode.TestItem) {
-        // legacy per-file discovery is no longer used; we populate suites in discoverWorkspace
-    }
-
     // run ginkgo dry-run from the entrypoint to build the suite tree
-    async loadWorkspaceTests(ws: vscode.WorkspaceFolder): Promise<string[]> {
+    async loadWorkspaceTests(ws: vscode.WorkspaceFolder, leafKeyToTestItem: Map<string, vscode.TestItem>, containerKeyToLeafKeys: Map<string, Set<string>>): Promise<string[]> {
         const discoveredSuiteIds: string[] = [];
 
         const cwd = ws.uri.fsPath;
-        const outJson = path.join(cwd, `ginkgo_discovery.json`);
+        const outJson = path.join(os.tmpdir(), `ginkgo_discovery_${Date.now()}_${process.pid}.json`);
         const args = ['run', '--dry-run', `--json-report=${outJson}`, '-r'];
-        
+
         // Add build tags if configured
         const buildTags = this.getBuildTags();
         if (buildTags.length > 0) {
             args.push(`--tags=${buildTags.join(',')}`);
         }
-        
+
         try {
             await this.execProcess(this.getGinkgoPath(), args, { cwd });
         } catch (e) {
@@ -184,20 +210,19 @@ export class GinkgoTestController {
             const raw = fs.readFileSync(outJson, 'utf8');
             try {
                 const suiteReports = JSON.parse(raw) as SuiteJson[];
-                for (const suiteReport of suiteReports) 
-                {
-                    const suiteId = this.buildSuite(ws, suiteReport);
+                for (const suiteReport of suiteReports) {
+                    const suiteId = this.buildSuite(ws, suiteReport, leafKeyToTestItem, containerKeyToLeafKeys);
                     if (suiteId) {
                         discoveredSuiteIds.push(suiteId);
                     }
                 }
-            } catch (e) {}
-            try { fs.unlinkSync(outJson); } catch {}
+            } catch (e) { }
+            try { fs.unlinkSync(outJson); } catch { }
         }
         return discoveredSuiteIds;
     }
     // best-effort parser: look for spec reports and their container hierarchies
-    buildSuite(ws: vscode.WorkspaceFolder, report: SuiteJson): string | undefined {
+    buildSuite(ws: vscode.WorkspaceFolder, report: SuiteJson, leafKeyToTestItem: Map<string, vscode.TestItem>, containerKeyToLeafKeys: Map<string, Set<string>>): string | undefined {
 
         // create top-level suite item
         const suiteFilePath = path.isAbsolute(report.SuitePath) ? report.SuitePath : path.join(ws.uri.fsPath, report.SuitePath);
@@ -212,7 +237,7 @@ export class GinkgoTestController {
             this.itemMeta.set(suiteTestItem, { type: 'suite', suiteKey, suitePath: suiteFilePath, itemLabel: suiteLabel, descendantLeafKeys: new Set<string>() } as FullTestItemMeta);
         }
         suiteTestItem.busy = true;
-        
+
         // Build new tree in memory first, then reconcile with existing children
         const newRootMap = new Map<string, vscode.TestItem>();
         const seenChildIds = new Set<string>();
@@ -243,13 +268,13 @@ export class GinkgoTestController {
                         node.range = new vscode.Range(new vscode.Position((line as number) - 1, 0), new vscode.Position((line as number) - 1, 0));
                         const containerKey = this.makeContainerKey(suiteKey, containerPath);
                         this.itemMeta.set(node, { type: 'container', itemLabel: name, suiteKey, suitePath: suiteFilePath, containerPath: [...containerPath], file, line, containerKey, descendantLeafKeys: new Set<string>() } as FullTestItemMeta);
-                        if (!this.containerKeyToLeafKeys.has(containerKey)) {this.containerKeyToLeafKeys.set(containerKey, new Set<string>());}
+                        if (!containerKeyToLeafKeys.has(containerKey)) { containerKeyToLeafKeys.set(containerKey, new Set<string>()); }
                         parent.children.add(node);
                     } else {
                         // Update existing node metadata
                         const containerKey = this.makeContainerKey(suiteKey, containerPath);
                         this.itemMeta.set(node, { type: 'container', itemLabel: name, suiteKey, suitePath: suiteFilePath, containerPath: [...containerPath], file, line, containerKey, descendantLeafKeys: new Set<string>() } as FullTestItemMeta);
-                        if (!this.containerKeyToLeafKeys.has(containerKey)) {this.containerKeyToLeafKeys.set(containerKey, new Set<string>());}
+                        if (!containerKeyToLeafKeys.has(containerKey)) { containerKeyToLeafKeys.set(containerKey, new Set<string>()); }
                     }
                     newRootMap.set(containerId, node);
                 }
@@ -262,7 +287,7 @@ export class GinkgoTestController {
             const specLocation = spec.LeafNodeLocation || {};
             const specFile = specLocation.FileName || suiteFilePath;
             const specLine = specLocation.LineNumber || 1;
-            
+
             let testItem = parent.children.get(specId);
             if (!testItem) {
                 // Create new test item
@@ -278,30 +303,30 @@ export class GinkgoTestController {
             const leafKey = this.makeLeafKey(specFile, specLine, suiteKey, containerPath, leaf);
             const fallbackLeafKey = this.makeFallbackLeafKey(suiteKey, containerPath, leaf);
             this.itemMeta.set(testItem, { type: 'leaf', itemLabel: leaf, suiteKey, suitePath: suiteFilePath, containerPath: [...containerPath], file: specFile, line: specLine, leafText: leaf, leafKey, fallbackLeafKey } as FullTestItemMeta);
-            if (!this.leafKeyToTestItem.has(leafKey)) {this.leafKeyToTestItem.set(leafKey, testItem);}
-            else {this.leafKeyToTestItem.set(fallbackLeafKey, testItem);}
+            leafKeyToTestItem.set(leafKey, testItem);
+            leafKeyToTestItem.set(fallbackLeafKey, testItem);
 
             // register leafKey with ancestor containers and suite
             let ancestor: vscode.TestItem | undefined = parent;
             while (ancestor) {
                 const m = this.itemMeta.get(ancestor) as FullTestItemMeta | undefined;
                 if (m) {
-                    if (!m.descendantLeafKeys) {m.descendantLeafKeys = new Set<string>();}
+                    if (!m.descendantLeafKeys) { m.descendantLeafKeys = new Set<string>(); }
                     m.descendantLeafKeys.add(leafKey);
                     if (m.containerKey) {
-                        const set = this.containerKeyToLeafKeys.get(m.containerKey)!;
+                        const set = containerKeyToLeafKeys.get(m.containerKey)!;
                         set.add(leafKey);
                     }
                 }
-                if (ancestor === suiteTestItem) {break;}
+                if (ancestor === suiteTestItem) { break; }
                 const parentId = ancestor.id.substring(0, ancestor.id.lastIndexOf('::'));
                 ancestor = parentId ? this.findTestItemByIdPrefix(parentId) : undefined;
             }
         }
-        
+
         // Remove children that no longer exist (recursively)
         this.removeStaleChildren(suiteTestItem, seenChildIds);
-        
+
         suiteTestItem.busy = false;
         return suiteId;
     }
@@ -323,13 +348,23 @@ export class GinkgoTestController {
         toDelete.forEach(id => parent.children.delete(id));
     }
 
-    // helper to find test item by id prefix (exact or child)
+    // helper to find test item by id, searching the full tree recursively
     findTestItemByIdPrefix(prefix: string): vscode.TestItem | undefined {
         const exact = this.controller.items.get(prefix);
-        if (exact) {return exact;}
+        if (exact) { return exact; }
         for (const [, item] of this.controller.items) {
-            const child = item.children.get(prefix);
-            if (child) {return child;}
+            const found = this._findInChildren(item, prefix);
+            if (found) { return found; }
+        }
+        return undefined;
+    }
+
+    private _findInChildren(item: vscode.TestItem, id: string): vscode.TestItem | undefined {
+        const direct = item.children.get(id);
+        if (direct) { return direct; }
+        for (const [, child] of item.children) {
+            const found = this._findInChildren(child, id);
+            if (found) { return found; }
         }
         return undefined;
     }
@@ -339,7 +374,7 @@ export class GinkgoTestController {
         return path.resolve(suitePath);
     }
     makeContainerKey(suiteKey: string, containerPath: string[]) {
-        return `${suiteKey}::C::${containerPath.map((s)=>s.replace(/::/g,'\\::')).join('::')}`;
+        return `${suiteKey}::C::${containerPath.map((s) => s.replace(/::/g, '\\::')).join('::')}`;
     }
     makeLeafKey(file?: string, line?: number, suiteKey?: string, containerPath: string[] = [], leafText?: string) {
         if (file && line) {
@@ -348,7 +383,7 @@ export class GinkgoTestController {
         return this.makeFallbackLeafKey(suiteKey || '.', containerPath, leafText);
     }
     makeFallbackLeafKey(suiteKey: string, containerPath: string[], leafText?: string) {
-        return `${suiteKey}::L::${containerPath.map((s)=>s.replace(/::/g,'\\::')).join('::')}::${leafText || ''}`;
+        return `${suiteKey}::L::${containerPath.map((s) => s.replace(/::/g, '\\::')).join('::')}::${leafText || ''}`;
     }
 
     async runHandler(request: vscode.TestRunRequest, token: vscode.CancellationToken) {
@@ -375,17 +410,21 @@ export class GinkgoTestController {
     async executeTestItem(item: vscode.TestItem, run: vscode.TestRun, token: vscode.CancellationToken, isDebug?: boolean) {
         run.started(item);
 
-        const meta = this.itemMeta.get(item) as FullTestItemMeta | any;
+        // Read all configuration once up-front to avoid redundant getConfiguration() calls
+        const ginkgoPath = this.getGinkgoPath();
+        const envVars = this.getEnvironmentVariables();
+        const buildTags = this.getBuildTags();
+
+        const meta = this.itemMeta.get(item) as FullTestItemMeta | undefined;
 
         const wf = item.uri ? vscode.workspace.getWorkspaceFolder(item.uri) : undefined;
         const cwd = meta?.file ? path.dirname(meta.file) : (wf?.uri.fsPath || meta?.suitePath || process.cwd());
 
-        const outJson = path.join(cwd || '.', `ginkgo_run_report_${Date.now()}_${process.pid}.json`);
-        let stdout = '';
+        const outJson = path.join(os.tmpdir(), `ginkgo_run_report_${Date.now()}_${process.pid}.json`);
         let exitCode = 0;
         let args: string[] = [];
         let argPrefix = '--';
-        
+
         if (isDebug) { argPrefix = '-ginkgo.'; }
         if (meta?.type === 'container') {
             // prefer running the container by the file:line available on the container node
@@ -396,71 +435,89 @@ export class GinkgoTestController {
                 args = [`${argPrefix}json-report=${outJson}`, `${argPrefix}focus=${focus}`];
             }
         } else if (meta?.type === 'leaf') {
-            args = [ `${argPrefix}json-report=${outJson}`, `${argPrefix}focus-file=${meta.file}:${meta.line}`];
+            args = [`${argPrefix}json-report=${outJson}`, `${argPrefix}focus-file=${meta.file}:${meta.line}`];
         } else {
-            args = [ `${argPrefix}json-report=${outJson}`, '-r'];
+            args = [`${argPrefix}json-report=${outJson}`, '-r'];
         }
-
-        // Get build tags for later use
-        const buildTags = this.getBuildTags();
 
         if (isDebug) {
             const dbgName = `Ginkgo Debug ${Date.now()}`;
             try {
-                
-                // Get environment variables and merge with current env
-                const envVars = this.getEnvironmentVariables();
                 const env = { ...process.env, ...envVars };
-                
+
                 const debugConfig: any = {
                     name: dbgName,
                     type: 'go',
                     request: 'launch',
                     mode: 'auto',
-                    program: meta.file,
+                    program: meta?.file || meta?.suitePath || 'unknown',
                     args: args,
                     cwd: cwd || undefined,
                     env: env,
                 };
-                
+
                 // Add build tags to debug config if specified
                 if (buildTags.length > 0) {
                     debugConfig.buildFlags = `-tags=${buildTags.join(',')}`;
                 }
-                
-                run.appendOutput(`debugging: ${meta.itemLabel || item.label} ${args.join(' ')}\r\n\r\n`);
+
+                this.appendOutput(run, `debugging: ${meta?.itemLabel || item.label} ${args.join(' ')}\r\n\r\n`);
 
                 const started = await vscode.debug.startDebugging(wf, debugConfig);
                 if (!started) {
-                    run.appendOutput('Debug session failed to start\r\n');
+                    this.appendOutput(run, 'Debug session failed to start\r\n');
                     return;
                 }
+
+                // Wait for the debug session to terminate before parsing results
+                await new Promise<void>((resolve) => {
+                    let completed = false;
+
+                    const finish = () => {
+                        if (completed) {
+                            return;
+                        }
+                        completed = true;
+                        sub.dispose();
+                        cancelSub.dispose();
+                        resolve();
+                    };
+
+                    const sub = vscode.debug.onDidTerminateDebugSession((session) => {
+                        if (session.name === dbgName) {
+                            finish();
+                        }
+                    });
+
+                    const cancelSub = token.onCancellationRequested(() => {
+                        finish();
+                        vscode.debug.stopDebugging();
+                    });
+                });
             } catch (e) {
-                run.appendOutput('Build or debug failed: ' + String(e) + '\r\n');
+                this.appendOutput(run, 'Build or debug failed: ' + String(e) + '\r\n');
                 return;
-            } 
+            }
         } else {
-           
-               
+
+
             args = ['run', ...args];
-            
+
             // Add build tags for non-debug mode
             if (buildTags.length > 0) {
                 args.push(`--tags=${buildTags.join(',')}`);
             }
-            
-            const ginkgoPath = this.getGinkgoPath();
-            run.appendOutput(`${ginkgoPath} ${args.join(' ')}\r\n\r\n`);
-            
-            // Get environment variables and merge with current env
-            const envVars = this.getEnvironmentVariables();
-            const env = { ...process.env, ...envVars };
-            
-            const proc = cp.spawn(ginkgoPath, args, { cwd: cwd || undefined, env });
-            token.onCancellationRequested(() => { try { proc.kill(); } catch {} });
 
-            proc.stdout.on('data', (c) => { const msg = String(c); stdout += msg; run.appendOutput(msg.replace(/\n/g,'\r\n')); });
-            proc.stderr.on('data', (c) => run.appendOutput(String(c).replace(/\n/g,'\r\n')));
+            this.appendOutput(run, `${ginkgoPath} ${args.join(' ')}\r\n\r\n`);
+
+            // Get environment variables and merge with current env
+            const env = { ...process.env, ...envVars };
+
+            const proc = cp.spawn(ginkgoPath, args, { cwd: cwd || undefined, env });
+            token.onCancellationRequested(() => { try { proc.kill(); } catch { } });
+
+            proc.stdout.on('data', (c) => { const msg = String(c); this.appendOutput(run, msg.replace(/\n/g, '\r\n')); });
+            proc.stderr.on('data', (c) => this.appendOutput(run, String(c).replace(/\n/g, '\r\n')));
 
             exitCode = await new Promise<number>((resolve) => proc.on('close', (code) => resolve(code ?? 0)));
         }
@@ -478,16 +535,16 @@ export class GinkgoTestController {
                         const pk = this.makeLeafKey(loc.FileName, loc.LineNumber, suiteKey, containers, s.LeafNodeText);
                         parsedSpecMap.set(pk, s);
                         const fk = this.makeFallbackLeafKey(suiteKey, containers, s.LeafNodeText);
-                        if (!parsedSpecMap.has(fk)) {parsedSpecMap.set(fk, s);}
+                        if (!parsedSpecMap.has(fk)) { parsedSpecMap.set(fk, s); }
                     }
                 }
             } else {
-                run.appendOutput('No ginkgo JSON report found\r\n');
+                this.appendOutput(run, 'No ginkgo JSON report found\r\n');
             }
         } catch (e) {
-            run.appendOutput('Failed parsing ginkgo JSON: ' + String(e) + '\r\n');
+            this.appendOutput(run, 'Failed parsing ginkgo JSON: ' + String(e) + '\r\n');
         } finally {
-            try { fs.unlinkSync(outJson); } catch {}
+            try { fs.unlinkSync(outJson); } catch { }
         }
 
         const applySpecToItem = (ti: vscode.TestItem, s: any) => {
@@ -505,7 +562,7 @@ export class GinkgoTestController {
                 const mapped = this.leafKeyToTestItem.get(leafKey) || this.leafKeyToTestItem.get(meta.fallbackLeafKey || leafKey) || item;
                 applySpecToItem(mapped, s);
             } else {
-                if (exitCode === 0) {run.passed(item);} else {run.failed(item, new vscode.TestMessage('Failed'));}
+                if (exitCode === 0) { run.passed(item); } else { run.failed(item, new vscode.TestMessage('Failed')); }
             }
             return;
         }
@@ -521,20 +578,20 @@ export class GinkgoTestController {
                     anyFound = true;
                     applySpecToItem(mappedItem, s);
                     const st = s.State || '';
-                    if (st === 'failed') {aggState = 'failed';}
-                    else if (st === 'passed' && aggState !== 'failed') {aggState = 'passed';}
+                    if (st === 'failed') { aggState = 'failed'; }
+                    else if (st === 'passed' && aggState !== 'failed') { aggState = 'passed'; }
                 } else if (mappedItem) {
                     anyFound = true;
-                    if (exitCode === 0) { run.passed(mappedItem); if (aggState !== 'failed') {aggState = 'passed';} }
+                    if (exitCode === 0) { run.passed(mappedItem); if (aggState !== 'failed') { aggState = 'passed'; } }
                     else { run.failed(mappedItem, new vscode.TestMessage('Failed')); aggState = 'failed'; }
                 }
             }
             if (anyFound) {
-                if (aggState === 'failed') {run.failed(item, new vscode.TestMessage('One or more child tests failed'));}
-                else if (aggState === 'passed') {run.passed(item);}
-                else {run.skipped(item);}
+                if (aggState === 'failed') { run.failed(item, new vscode.TestMessage('One or more child tests failed')); }
+                else if (aggState === 'passed') { run.passed(item); }
+                else { run.skipped(item); }
             } else {
-                if (exitCode === 0) {run.passed(item);} else {run.failed(item, new vscode.TestMessage('Failed'));}
+                if (exitCode === 0) { run.passed(item); } else { run.failed(item, new vscode.TestMessage('Failed')); }
             }
             return;
         }
@@ -542,10 +599,16 @@ export class GinkgoTestController {
         for (const [k, ti] of this.leafKeyToTestItem.entries()) {
             if (ti.label === item.label) {
                 const s = parsedSpecMap.get(k);
-                if (s) {applySpecToItem(ti, s);}
-                else if (exitCode === 0) {run.passed(ti);} else {run.failed(ti, new vscode.TestMessage('Failed'));}
+                if (s) { applySpecToItem(ti, s); }
+                else if (exitCode === 0) { run.passed(ti); } else { run.failed(ti, new vscode.TestMessage('Failed')); }
             }
         }
+    }
+
+    /** Write to both the test run output and the persistent output channel. */
+    appendOutput(run: vscode.TestRun, msg: string) {
+        run.appendOutput(msg);
+        this.outputChannel.append(msg.replace(/\r\n/g, '\n'));
     }
 
     execProcess(cmd: string, args: string[], opts: cp.SpawnOptions = {}): Promise<void> {
@@ -556,12 +619,12 @@ export class GinkgoTestController {
                 ...opts,
                 env: { ...process.env, ...envVars, ...(opts.env || {}) }
             };
-            
+
             const p = cp.spawn(cmd, args, mergedOpts);
-            p.stdout?.on('data', (c) => { });
-            p.stderr?.on('data', (c) => { });
+            p.stdout?.on('data', (c) => { this.outputChannel.append(String(c)); });
+            p.stderr?.on('data', (c) => { this.outputChannel.append(String(c)); });
             p.on('error', (e) => reject(e));
-            p.on('close', (code) => { 
+            p.on('close', (code) => {
                 if (code === 0) {
                     resolve();
                 } else {

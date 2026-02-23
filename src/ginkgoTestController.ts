@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { constants } from './constants';
 
@@ -201,7 +202,7 @@ export class GinkgoTestController {
         const discoveredSuiteIds: string[] = [];
 
         const cwd = ws.uri.fsPath;
-        const outJson = path.join(cwd, `ginkgo_discovery.json`);
+        const outJson = path.join(os.tmpdir(), `ginkgo_discovery_${Date.now()}_${process.pid}.json`);
         const args = ['run', '--dry-run', `--json-report=${outJson}`, '-r'];
 
         // Add build tags if configured
@@ -430,7 +431,7 @@ export class GinkgoTestController {
         const wf = item.uri ? vscode.workspace.getWorkspaceFolder(item.uri) : undefined;
         const cwd = meta?.file ? path.dirname(meta.file) : (wf?.uri.fsPath || meta?.suitePath || process.cwd());
 
-        const outJson = path.join(cwd || '.', `ginkgo_run_report_${Date.now()}_${process.pid}.json`);
+        const outJson = path.join(os.tmpdir(), `ginkgo_run_report_${Date.now()}_${process.pid}.json`);
         let exitCode = 0;
         let args: string[] = [];
         let argPrefix = '--';

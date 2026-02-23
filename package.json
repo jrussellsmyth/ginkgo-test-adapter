@@ -12,7 +12,10 @@
     "vscode": "^1.109.0"
   },
   "categories": [
-    "Other"
+    "Testing"
+  ],
+  "extensionDependencies": [
+    "golang.go"
   ],
   "activationEvents": [
     "onLanguage:go",

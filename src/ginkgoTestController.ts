@@ -4,14 +4,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { constants } from './constants';
 
-// should match the struct returned by helpers/discover_suites.go
-// type SuiteEntry = { 
-//     file: string; 
-//     line: number; 
-//     column?: number; 
-//     suite: string; 
-//     entrypoint: string 
-// };
 
 type SuiteJson = {
     SuitePath: string;

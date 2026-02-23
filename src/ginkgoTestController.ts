@@ -64,7 +64,7 @@ export class GinkgoTestController {
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
-        this.outputChannel = vscode.window.createOutputChannel('Ginkgo');
+        this.outputChannel = vscode.window.createOutputChannel('Ginkgo Test Adapter');
         this.controller = vscode.tests.createTestController('ginkgo', 'Ginkgo');
 
         this.controller.resolveHandler = async (item) => {
@@ -451,7 +451,7 @@ export class GinkgoTestController {
                     type: 'go',
                     request: 'launch',
                     mode: 'auto',
-                    program: meta.file,
+                    program: meta?.file || meta?.suitePath || 'unknown',
                     args: args,
                     cwd: cwd || undefined,
                     env: env,
@@ -462,11 +462,11 @@ export class GinkgoTestController {
                     debugConfig.buildFlags = `-tags=${buildTags.join(',')}`;
                 }
 
-                run.appendOutput(`debugging: ${meta.itemLabel || item.label} ${args.join(' ')}\r\n\r\n`);
+                this.appendOutput(run, `debugging: ${meta?.itemLabel || item.label} ${args.join(' ')}\r\n\r\n`);
 
                 const started = await vscode.debug.startDebugging(wf, debugConfig);
                 if (!started) {
-                    run.appendOutput('Debug session failed to start\r\n');
+                    this.appendOutput(run, 'Debug session failed to start\r\n');
                     return;
                 }
 
@@ -485,7 +485,7 @@ export class GinkgoTestController {
                     });
                 });
             } catch (e) {
-                run.appendOutput('Build or debug failed: ' + String(e) + '\r\n');
+                this.appendOutput(run, 'Build or debug failed: ' + String(e) + '\r\n');
                 return;
             }
         } else {
@@ -499,7 +499,7 @@ export class GinkgoTestController {
             }
 
             const ginkgoPath = this.getGinkgoPath();
-            run.appendOutput(`${ginkgoPath} ${args.join(' ')}\r\n\r\n`);
+            this.appendOutput(run, `${ginkgoPath} ${args.join(' ')}\r\n\r\n`);
 
             // Get environment variables and merge with current env
             const envVars = this.getEnvironmentVariables();
@@ -508,8 +508,8 @@ export class GinkgoTestController {
             const proc = cp.spawn(ginkgoPath, args, { cwd: cwd || undefined, env });
             token.onCancellationRequested(() => { try { proc.kill(); } catch { } });
 
-            proc.stdout.on('data', (c) => { const msg = String(c); run.appendOutput(msg.replace(/\n/g, '\r\n')); });
-            proc.stderr.on('data', (c) => run.appendOutput(String(c).replace(/\n/g, '\r\n')));
+            proc.stdout.on('data', (c) => { const msg = String(c); this.appendOutput(run, msg.replace(/\n/g, '\r\n')); });
+            proc.stderr.on('data', (c) => this.appendOutput(run, String(c).replace(/\n/g, '\r\n')));
 
             exitCode = await new Promise<number>((resolve) => proc.on('close', (code) => resolve(code ?? 0)));
         }
@@ -531,10 +531,10 @@ export class GinkgoTestController {
                     }
                 }
             } else {
-                run.appendOutput('No ginkgo JSON report found\r\n');
+                this.appendOutput(run, 'No ginkgo JSON report found\r\n');
             }
         } catch (e) {
-            run.appendOutput('Failed parsing ginkgo JSON: ' + String(e) + '\r\n');
+            this.appendOutput(run, 'Failed parsing ginkgo JSON: ' + String(e) + '\r\n');
         } finally {
             try { fs.unlinkSync(outJson); } catch { }
         }
@@ -595,6 +595,12 @@ export class GinkgoTestController {
                 else if (exitCode === 0) { run.passed(ti); } else { run.failed(ti, new vscode.TestMessage('Failed')); }
             }
         }
+    }
+
+    /** Write to both the test run output and the persistent output channel. */
+    appendOutput(run: vscode.TestRun, msg: string) {
+        run.appendOutput(msg);
+        this.outputChannel.append(msg.replace(/\r\n/g, '\n'));
     }
 
     execProcess(cmd: string, args: string[], opts: cp.SpawnOptions = {}): Promise<void> {

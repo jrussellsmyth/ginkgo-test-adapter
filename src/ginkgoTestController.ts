@@ -139,7 +139,7 @@ export class GinkgoTestController {
             // If a change arrived while we were running, do one more pass.
             if (this._discoveryPending) {
                 this._discoveryPending = false;
-                this._runDiscovery();
+                await this._runDiscovery();
             }
         }
     }

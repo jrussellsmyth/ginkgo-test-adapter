@@ -21,10 +21,6 @@
   "contributes": {
     "commands": [
       {
-        "command": "ginkgo-test-adapter.helloWorld",
-        "title": "Hello World"
-      },
-      {
         "command": "ginkgo-test-adapter.runTest",
         "title": "Ginkgo: Run Test"
       },
@@ -60,7 +56,6 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "build-dist": "bash ./scripts/build-dist.sh",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",

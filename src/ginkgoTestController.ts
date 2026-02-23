@@ -358,13 +358,23 @@ export class GinkgoTestController {
         toDelete.forEach(id => parent.children.delete(id));
     }
 
-    // helper to find test item by id prefix (exact or child)
+    // helper to find test item by id, searching the full tree recursively
     findTestItemByIdPrefix(prefix: string): vscode.TestItem | undefined {
         const exact = this.controller.items.get(prefix);
         if (exact) { return exact; }
         for (const [, item] of this.controller.items) {
-            const child = item.children.get(prefix);
-            if (child) { return child; }
+            const found = this._findInChildren(item, prefix);
+            if (found) { return found; }
+        }
+        return undefined;
+    }
+
+    private _findInChildren(item: vscode.TestItem, id: string): vscode.TestItem | undefined {
+        const direct = item.children.get(id);
+        if (direct) { return direct; }
+        for (const [, child] of item.children) {
+            const found = this._findInChildren(child, id);
+            if (found) { return found; }
         }
         return undefined;
     }
@@ -410,6 +420,11 @@ export class GinkgoTestController {
     async executeTestItem(item: vscode.TestItem, run: vscode.TestRun, token: vscode.CancellationToken, isDebug?: boolean) {
         run.started(item);
 
+        // Read all configuration once up-front to avoid redundant getConfiguration() calls
+        const ginkgoPath = this.getGinkgoPath();
+        const envVars = this.getEnvironmentVariables();
+        const buildTags = this.getBuildTags();
+
         const meta = this.itemMeta.get(item) as FullTestItemMeta | undefined;
 
         const wf = item.uri ? vscode.workspace.getWorkspaceFolder(item.uri) : undefined;
@@ -435,15 +450,9 @@ export class GinkgoTestController {
             args = [`${argPrefix}json-report=${outJson}`, '-r'];
         }
 
-        // Get build tags for later use
-        const buildTags = this.getBuildTags();
-
         if (isDebug) {
             const dbgName = `Ginkgo Debug ${Date.now()}`;
             try {
-
-                // Get environment variables and merge with current env
-                const envVars = this.getEnvironmentVariables();
                 const env = { ...process.env, ...envVars };
 
                 const debugConfig: any = {

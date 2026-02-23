@@ -413,7 +413,6 @@ export class GinkgoTestController {
         const cwd = meta?.file ? path.dirname(meta.file) : (wf?.uri.fsPath || meta?.suitePath || process.cwd());
 
         const outJson = path.join(cwd || '.', `ginkgo_run_report_${Date.now()}_${process.pid}.json`);
-        let stdout = '';
         let exitCode = 0;
         let args: string[] = [];
         let argPrefix = '--';
@@ -506,7 +505,7 @@ export class GinkgoTestController {
             const proc = cp.spawn(ginkgoPath, args, { cwd: cwd || undefined, env });
             token.onCancellationRequested(() => { try { proc.kill(); } catch { } });
 
-            proc.stdout.on('data', (c) => { const msg = String(c); stdout += msg; run.appendOutput(msg.replace(/\n/g, '\r\n')); });
+            proc.stdout.on('data', (c) => { const msg = String(c); run.appendOutput(msg.replace(/\n/g, '\r\n')); });
             proc.stderr.on('data', (c) => run.appendOutput(String(c).replace(/\n/g, '\r\n')));
 
             exitCode = await new Promise<number>((resolve) => proc.on('close', (code) => resolve(code ?? 0)));

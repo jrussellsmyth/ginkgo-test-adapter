@@ -1,0 +1,65 @@
+e61e982 wip
+fbc216e use tempfiles
+5eba2a3 removed triple read of config, corrected recursion
+b980189 add output channel and log to it
+886d4f4 add output channel and send messages there
+79b28af removed any which would defeat typesafety
+92c5631 remove unnecessary concat
+e05d7c3 unnecsesary commented code
+57f1165 remove old build script
+dd91862 stop debug on cancell
+7779db5 Debounce file update handling in ginkgo test builder. correct config.
+a0f70fc Merge pull request #14 from jrussellsmyth/copilot/fix-debug-run-reporting
+
+f4e60d6 Merge pull request #15 from jrussellsmyth/copilot/fix-cannot-find-module-errors
+48e48c5 Fix Cannot find module errors: add npm install task before watch in tasks.json
+172b526 Initial plan
+5d8173f Initial plan
+8dea5dc Fix debug runs never reporting test results
+8a2389b Initial plan
+f2fe0c7 Merge pull request #13 from jrussellsmyth/copilot/configure-github-actions-release
+bfb7a06 Update action version and clarify comment
+6844d59 Eliminate duplicate version extraction and add documentation
+e64c950 Construct VSIX filename from package.json and clarify step name
+e150b38 Use explicit VSIX filename instead of glob pattern
+21051b0 Optimize version extraction to only run when needed
+500f057 Add release preparation to package workflow
+70a7a85 Initial plan
+156e418 Merge pull request #11 from jrussellsmyth/copilot/configure-github-actions-package
+668eba2 Add workflow documentation
+0ccab9a Add explicit permissions to workflow jobs
+80589c8 Add comments explaining workflow decisions
+04233fa Add CI workflow and update package workflow triggers
+531e87e Add GitHub Actions workflow to package extension
+4dedb50 Initial plan
+ec6325e Merge pull request #9 from jrussellsmyth:copilot/optimize-ginkgo-test-tree
+83c6513 Add clarifying comment to removeStaleChildren method
+4da570d Fix test tree blanking during updates - build tree incrementally
+c8ca1dc Initial plan
+6c67bc0 Merge pull request #5 from jrussellsmyth/copilot/add-configurable-defaults
+f6987cc Fix build tags and environment variable handling in debug mode
+163af65 fix build-flag-error
+b6b01e8 rename constant properties
+e41b004 Refactor constants to single object and add CONFIGURATION_SECTION
+7ba49aa Fix code review issues: use meta.itemLabel and apply build tags consistently
+a7672c6 Add configuration tests and update README documentation
+72bf4ba Add configuration support for ginkgo path, environment variables, and build tags
+b31b83a Initial plan
+63992d8 Merge pull request #7 from jrussellsmyth:copilot/add-code-lens-support
+1d7bc9a remove dead code
+cd82211 Update documentation to describe Code Lens feature
+769751c Fix resource leaks by properly disposing CancellationTokenSource
+46b83e3 Refactor to use stored run profiles instead of creating new ones
+3d4a4d7 Add Code Lens support for run and debug test actions
+2d65f05 Initial plan
+1d19447 update todo
+f414620 Merge pull request #3 from jrussellsmyth/remove-go-update-tests
+ea67392 debug working
+a31c529 Merge pull request #2 from jrussellsmyth/remove-go-update-tests
+646fd63 runs all cases, add tables
+2fd333d remove go helper
+92331cc Added more detail
+a1912db Merge pull request #1 from jrussellsmyth/second-try
+f8d912d Apply suggestions from code review
+ae6d5e1 initial commit
+8bf3687 Initial empty master
